@@ -1,0 +1,124 @@
+name: pygoat
+
+services:
+  migration:
+    image: pygoat:local
+    build:
+      context: ./data/pygoat
+      dockerfile: Dockerfile
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py seed_scoring &&
+             python manage.py populate_labs &&
+             python manage.py populate_challenges &&
+             python manage.py startuplabs"
+    environment:
+      PREBUILD_LABS_ON_STARTUP: "true"
+    volumes:
+      - ./data/pygoat:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - my_network
+
+  web:
+    image: pygoat:local
+    build:
+      context: ./data/pygoat
+      dockerfile: Dockerfile
+    command:
+      - gunicorn
+      - --bind
+      - 0.0.0.0:8000
+      - --workers
+      - "6"
+      - --worker-class
+      - gthread
+      - --threads
+      - "4"
+      - --timeout
+      - "600"
+      - pygoat.wsgi
+    environment:
+      LAB_DOMAIN: lvh.me
+      LAB_COOKIE_DOMAIN: .lvh.me
+      LAB_FORWARD_AUTH_URL: http://web:8000/auth/verify/
+    ports:
+      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:8001:8001"
+    volumes:
+      - ./data/pygoat:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    labels:
+      - traefik.enable=true
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+    networks:
+      - my_network
+
+  traefik:
+    image: traefik:latest
+    container_name: traefik_proxy
+    command:
+      - --configfile=/traefik.yml
+    ports:
+      - "127.0.0.1:80:80"
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./data/pygoat/traefik.yml:/traefik.yml
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - my_network
+
+  zap:
+    image: ghcr.io/zaproxy/zaproxy:stable
+    command:
+      - zap.sh
+      - -daemon
+      - -host
+      - 127.0.0.1
+      - -port
+      - "8090"
+      - -config
+      - api.disablekey=true
+    network_mode: service:web
+    depends_on:
+      web:
+        condition: service_started
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl --silent --fail http://127.0.0.1:8090/JSON/core/view/version/ >/dev/null
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  cyberforge:
+    build:
+      context: .
+      dockerfile: Dockerfile.cyberforge
+    environment:
+      HOST: 0.0.0.0
+      PORT: "8001"
+      LLM_MODE: ${LLM_MODE:-groq}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://localhost:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-codellama}
+      DEBUG: "false"
+    volumes:
+      - ./data/pygoat:/pygoat:ro
+      - cyberforge-data:/app/data
+    network_mode: service:web
+    depends_on:
+      zap:
+        condition: service_healthy
+
+networks:
+  my_network:
+    name: my_network
+    driver: bridge
+
+volumes:
+  cyberforge-data:
