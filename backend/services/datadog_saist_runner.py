@@ -300,11 +300,12 @@ class DatadogSAISTRunner:
         return self.parse_sarif_to_findings(sarif_document, target_dir)
 
     def _collect_source_files(self, target_dir: str) -> List[Tuple[str, str]]:
-        """Collects candidate source code files."""
-        eligible_extensions = {".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".go", ".php"}
+        """Collects candidate source code files (Strictly Python-Only)."""
+        eligible_extensions = {".py"}
         skip_dirs = {
             ".git", ".svn", "__pycache__", "node_modules", "venv", ".venv",
-            "env", "dist", "build", ".next", ".pytest_cache", "coverage"
+            "env", "dist", "build", ".next", ".pytest_cache", "coverage",
+            "migrations", "static", "media"
         }
 
         collected = []

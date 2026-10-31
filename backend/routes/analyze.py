@@ -96,10 +96,14 @@ async def sast_scan_upload(
     files_payload = []
 
     for f in uploaded_files:
+        fn = f.filename or "uploaded_file.py"
+        # Strictly Python-Only
+        if fn and not fn.lower().endswith(".py"):
+            continue
         content_bytes = await f.read()
         content_str = content_bytes.decode("utf-8", errors="replace")
         files_payload.append({
-            "filename": f.filename or "uploaded_file.py",
+            "filename": fn,
             "content": content_str
         })
 

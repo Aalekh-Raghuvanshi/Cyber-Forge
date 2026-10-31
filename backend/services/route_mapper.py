@@ -136,7 +136,18 @@ class PythonFunctionIndexer(ast.NodeVisitor):
     def _index_func(self, node: ast.AST):
         name = getattr(node, "name", "anonymous")
         start_line = node.lineno
+        if hasattr(node, "decorator_list") and node.decorator_list:
+            start_line = min([node.lineno] + [d.lineno for d in node.decorator_list])
         end_line = getattr(node, "end_lineno", node.lineno)
+
+        # Collect function calls made inside this function
+        called_names: Set[str] = set()
+        for subnode in ast.walk(node):
+            if isinstance(subnode, ast.Call):
+                if isinstance(subnode.func, ast.Name):
+                    called_names.add(subnode.func.id)
+                elif isinstance(subnode.func, ast.Attribute):
+                    called_names.add(subnode.func.attr)
 
         # Check if function takes 'request' or 'req' as first argument (Django view signature)
         takes_request = False
@@ -152,6 +163,7 @@ class PythonFunctionIndexer(ast.NodeVisitor):
             "start_line": start_line,
             "end_line": end_line,
             "takes_request": takes_request,
+            "calls": called_names,
             "node": node
         })
 
@@ -554,31 +566,37 @@ def extract_routes_from_folder(folder_path: str) -> List[RouteEntry]:
 
     skip_dirs = {
         ".git", ".svn", "__pycache__", "node_modules", "venv", ".venv",
-        "env", "dist", "build", ".next", ".pytest_cache"
+        "env", "dist", "build", ".next", ".pytest_cache", "migrations",
+        "static", "media", "coverage"
     }
 
-    # Step A: Collect all Python and JS files
+    # Step A: Collect Strictly Python (.py) files only
     py_files: List[Tuple[str, str]] = []  # (full_path, rel_path)
-    js_files: List[Tuple[str, str]] = []
 
     for root, dirs, files in os.walk(folder_path):
         dirs[:] = [d for d in dirs if d not in skip_dirs and not d.startswith(".")]
 
         for file in files:
             ext = os.path.splitext(file)[1].lower()
+            if ext != ".py":
+                continue
+
             full_path = os.path.join(root, file)
+            # Allow large Django files up to 5MB
+            try:
+                if os.path.getsize(full_path) > 5 * 1024 * 1024:
+                    continue
+            except Exception:
+                pass
+
             try:
                 rel_path = os.path.relpath(full_path, folder_path)
             except Exception:
                 rel_path = full_path
             rel_path = normalize_file_path(rel_path)
+            py_files.append((full_path, rel_path))
 
-            if ext == ".py":
-                py_files.append((full_path, rel_path))
-            elif ext in (".js", ".ts", ".mjs"):
-                js_files.append((full_path, rel_path))
-
-    # Step B: Index all Python functions across repository for Django view resolution
+    # Step B: Index all Python functions across repository for Django view resolution & call-graph linking
     functions_by_name: Dict[str, List[Dict[str, Any]]] = {}
     py_ast_cache: Dict[str, Tuple[ast.AST, str]] = {}
 
@@ -635,22 +653,16 @@ def extract_routes_from_folder(folder_path: str) -> List[RouteEntry]:
                 )
                 mapped_views.add((fn["file"], fn["name"]))
 
-    # Step E: Parse JS routes
-    for full_path, rel_path in js_files:
-        try:
-            with open(full_path, "r", encoding="utf-8", errors="replace") as f:
-                js_code = f.read()
-            routes.extend(extract_routes_from_js_code(js_code, rel_path))
-        except Exception:
-            continue
-
     # Sort routes by file, start_line
     routes.sort(key=lambda r: (r.file, r.start_line))
     return routes
 
 
 def paths_match(finding_file: str, route_file: str) -> bool:
-    """Robust path matching between finding file and route file."""
+    """
+    Robust path matching between finding file and route file.
+    Does NOT match on naked basename to eliminate cross-subfolder route drift.
+    """
     f1 = normalize_file_path(finding_file)
     f2 = normalize_file_path(route_file)
 
@@ -660,7 +672,7 @@ def paths_match(finding_file: str, route_file: str) -> bool:
         return True
     if f1.endswith(f"/{f2}") or f2.endswith(f"/{f1}"):
         return True
-    return os.path.basename(f1) == os.path.basename(f2)
+    return False
 
 
 def find_matching_route(
@@ -671,31 +683,77 @@ def find_matching_route(
     """
     Finds enclosing route for a finding if finding.file == route.file
     and route.start_line <= finding.line <= route.end_line.
-    Returns the narrowest matching route.
+    If the finding is inside a helper function, links to the route handler in that file that calls it.
+    Never falls back to a default route, GET /health, or module-level scope.
     """
     if not finding_file or finding_line is None:
         return None
 
     best_match: Optional[RouteEntry] = None
     min_span = float("inf")
+    file_routes: List[RouteEntry] = []
 
     for route in routes:
         if paths_match(finding_file, route.file):
+            file_routes.append(route)
             if route.start_line <= finding_line <= route.end_line:
                 span = route.end_line - route.start_line
                 if span < min_span:
                     min_span = span
                     best_match = route
 
-    return best_match
+    if best_match:
+        return best_match
+
+    # Intra-File Helper Function Call-Graph Resolution
+    if file_routes:
+        # Check if finding_file exists and can be parsed to find enclosing helper function
+        target_path = finding_file
+        if not os.path.exists(target_path) and file_routes:
+            target_path = file_routes[0].file
+
+        if os.path.exists(target_path):
+            try:
+                with open(target_path, "r", encoding="utf-8", errors="replace") as f:
+                    code = f.read()
+                tree = ast.parse(code)
+                indexer = PythonFunctionIndexer(target_path)
+                indexer.visit(tree)
+
+                # Find helper function enclosing finding_line
+                enclosing_helper = None
+                for fn in indexer.functions:
+                    if fn["start_line"] <= finding_line <= fn["end_line"]:
+                        enclosing_helper = fn
+                        break
+
+                if enclosing_helper:
+                    helper_name = enclosing_helper["name"]
+                    # Find if any route handler in this file calls helper_name
+                    for r in file_routes:
+                        for fn in indexer.functions:
+                            if fn["name"] == r.handler_function and helper_name in fn.get("calls", set()):
+                                return r
+            except Exception:
+                pass
+
+    return None
 
 
 def enrich_finding_with_route(finding: UnifiedFinding, routes: List[RouteEntry]) -> UnifiedFinding:
-    """Attaches enclosing route metadata directly onto the SAST finding per FR-4."""
+    """
+    Attaches enclosing route metadata directly onto the SAST finding per FR-4.
+    If the finding is outside any route or called helper function, url_path remains None.
+    """
     matched = find_matching_route(finding.file, finding.line, routes)
     if matched:
         finding.url_path = matched.url_path
         finding.http_method = matched.http_method[0] if matched.http_method else "GET"
         finding.handler_function = matched.handler_function
         finding.matched_route = matched.display
+    else:
+        finding.url_path = None
+        finding.http_method = None
+        finding.handler_function = None
+        finding.matched_route = None
     return finding

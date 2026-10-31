@@ -115,6 +115,40 @@ class CorrelationEngine:
         for sast in sast_findings:
             enrich_finding_with_route(sast, route_map)
 
+        # Step 0B: Pre-deduplicate SAST findings in same file & handler_function (or within 6 lines)
+        deduped_sast: List[UnifiedFinding] = []
+        for sast in sast_findings:
+            merged = False
+            for existing in deduped_sast:
+                same_file = paths_match(existing.file or "", sast.file or "")
+                same_cwe = are_cwes_equivalent(existing.cwe_id, sast.cwe_id)
+                same_fn = (
+                    existing.handler_function and sast.handler_function
+                    and existing.handler_function == sast.handler_function
+                )
+                line_diff = abs((existing.line or 0) - (sast.line or 0))
+                near_lines = line_diff <= 6
+
+                # Do not merge if they explicitly target different parameters
+                has_diff_params = False
+                p1 = (existing.parameter or "").strip().lower()
+                p2 = (sast.parameter or "").strip().lower()
+                if p1 and p2 and p1 != p2:
+                    has_diff_params = True
+
+                if same_file and same_cwe and (near_lines or (same_fn and line_diff <= 6)) and not has_diff_params:
+                    merged = True
+                    existing.merged_count = getattr(existing, "merged_count", 1) + 1
+                    if SEVERITY_ORDER.get(sast.severity.upper(), 0) > SEVERITY_ORDER.get(existing.severity.upper(), 0):
+                        existing.severity = sast.severity
+                    if not existing.code_snippet and sast.code_snippet:
+                        existing.code_snippet = sast.code_snippet
+                    break
+            if not merged:
+                deduped_sast.append(sast)
+
+        sast_findings = deduped_sast
+
         # Track matched finding IDs
         matched_sast_ids: Set[str] = set()
         matched_dast_ids: Set[str] = set()
@@ -259,7 +293,7 @@ class CorrelationEngine:
                         "fixed_code": best_sast.fixed_code,
                         "matched_route": route_display,
                         "supporting_scanners": ["SAST", "DAST"],
-                        "merged_count": 2,
+                        "merged_count": (getattr(best_sast, "merged_count", 1) or 1) + 1,
                         "has_route": True
                     }
                 else:

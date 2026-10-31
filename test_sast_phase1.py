@@ -121,9 +121,11 @@ def test_sast_detects_xss():
     """Deterministic detection of XSS (CWE-79)."""
     code = """
 from flask import render_template_string
+from django.utils.safestring import mark_safe
 
 def render_profile(bio):
     template = "<div>User bio: " + bio + "</div>"
+    safe_html = mark_safe("<div>User bio: " + bio + "</div>")
     return render_template_string(template)
 """
     analyzer = get_static_analyzer()

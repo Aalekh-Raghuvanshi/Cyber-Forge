@@ -29,27 +29,27 @@ logger = get_logger("llm_service")
 DETERMINISTIC_REMEDIATIONS: Dict[str, Dict[str, str]] = {
     "CWE-89": {
         "fix_suggestion": "Use parameterized queries or ORM abstractions instead of direct string concatenation or formatting.",
-        "fixed_code": "# Use parameterized query binding\ncursor.execute('SELECT * FROM table WHERE id = %s', (user_input,))"
+        "fixed_code": "cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))"
     },
     "CWE-79": {
         "fix_suggestion": "Contextually encode user-controlled input before rendering it in HTML or template contexts.",
-        "fixed_code": "import html\nsafe_output = html.escape(user_input)"
+        "fixed_code": "from markupsafe import escape\nsafe_output = escape(user_input)"
     },
     "CWE-22": {
-        "fix_suggestion": "Validate and canonicalize file paths using os.path.abspath and verify the resolved path remains strictly within the intended directory.",
-        "fixed_code": "safe_path = os.path.abspath(os.path.join(BASE_DIR, filename))\nif not safe_path.startswith(os.path.abspath(BASE_DIR)):\n    raise PermissionError('Path traversal detected')"
+        "fix_suggestion": "Validate and canonicalize file paths using os.path.realpath and verify the resolved path remains strictly within the intended directory.",
+        "fixed_code": "import os\nsafe_path = os.path.realpath(os.path.join(BASE_DIR, os.path.basename(user_filename)))\nif not safe_path.startswith(os.path.realpath(BASE_DIR)):\n    raise PermissionError('Path traversal detected')"
     },
     "CWE-78": {
         "fix_suggestion": "Avoid invoking shell interpreters (shell=False) and pass discrete argument vectors directly to subprocess.",
-        "fixed_code": "import subprocess\nsubprocess.run(['command', arg1, arg2], check=True, shell=False)"
+        "fixed_code": "import subprocess\nsubprocess.run(['nslookup', domain], check=True, shell=False)"
     },
     "CWE-798": {
         "fix_suggestion": "Extract secrets into secure environment variables, vault management systems, or secrets stores.",
         "fixed_code": "import os\nAPI_KEY = os.environ.get('API_KEY')"
     },
     "CWE-328": {
-        "fix_suggestion": "Migrate to modern cryptographic primitives such as SHA-256 for data integrity or Argon2/bcrypt for passwords.",
-        "fixed_code": "import hashlib\nsecure_hash = hashlib.sha256(data.encode('utf-8')).hexdigest()"
+        "fix_suggestion": "Use a slow, salted key-derivation function such as bcrypt or Argon2 (or werkzeug.security.generate_password_hash) instead of MD5/SHA-1.",
+        "fixed_code": "import bcrypt\nhashed_pw = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())"
     },
     "CWE-693": {
         "fix_suggestion": "Configure defensive HTTP response headers including Content-Security-Policy, Strict-Transport-Security, and X-Frame-Options.",
@@ -61,19 +61,47 @@ DETERMINISTIC_REMEDIATIONS: Dict[str, Dict[str, str]] = {
     },
     "CWE-918": {
         "fix_suggestion": "Validate target URLs against a strict allowlist and restrict network egress from server instances.",
-        "fixed_code": "if target_domain not in ALLOWED_DOMAINS:\n    raise ValueError('Disallowed destination')"
+        "fixed_code": "from urllib.parse import urlparse\nparsed = urlparse(target_url)\nif parsed.hostname not in ALLOWED_HOSTS:\n    raise ValueError('Disallowed host')"
     },
     "CWE-601": {
         "fix_suggestion": "Validate redirect targets against an approved relative path or domain allowlist.",
         "fixed_code": "if not target_url.startswith('/') or target_url.startswith('//'):\n    target_url = '/'"
     },
     "CWE-502": {
-        "fix_suggestion": "Avoid untrusted deserialization formats (e.g. pickle, yaml.load) and use safe parsers like json or yaml.safe_load.",
-        "fixed_code": "import json\ndata = json.loads(payload)"
+        "fix_suggestion": "Replace untrusted pickle deserialization with safe serialization formats like JSON and verify payload integrity with HMAC.",
+        "fixed_code": "import json\ndata = json.loads(raw_payload)"
     },
     "CWE-94": {
         "fix_suggestion": "Avoid dynamic code execution (eval, exec); use structured data parsing instead.",
-        "fixed_code": "import ast\nresult = ast.literal_eval(safe_expression)"
+        "fixed_code": "import ast\nresult = ast.literal_eval(user_expression)"
+    },
+    "CWE-1336": {
+        "fix_suggestion": "Do not render untrusted user input directly as template strings; use static template files and pass variables via context.",
+        "fixed_code": "from flask import render_template\nreturn render_template('blog.html', content=user_content)"
+    },
+    "CWE-611": {
+        "fix_suggestion": "Disable external entity resolution (DTD/XInclude) or use safe XML libraries like defusedxml.",
+        "fixed_code": "from defusedxml.ElementTree import fromstring\nxml_doc = fromstring(xml_payload)"
+    },
+    "CWE-117": {
+        "fix_suggestion": "Sanitize user input before writing to logs by stripping newline and carriage return characters.",
+        "fixed_code": "import re\nsafe_msg = re.sub(r'[\\r\\n]', '', user_input)\nlogger.info(safe_msg)"
+    },
+    "CWE-209": {
+        "fix_suggestion": "Disable DEBUG mode in production environments to avoid leaking stack traces and environment data.",
+        "fixed_code": "DEBUG = False"
+    },
+    "CWE-862": {
+        "fix_suggestion": "Enforce server-side authorization checks based on authenticated user sessions rather than trusting client cookies or headers.",
+        "fixed_code": "if not request.user.is_authenticated or not request.user.has_perm('app.view'):\n    raise PermissionDenied()"
+    },
+    "CWE-287": {
+        "fix_suggestion": "Verify user authentication using secure server-side session stores instead of unverified headers or cookies.",
+        "fixed_code": "if not authenticate_session(request.session):\n    return redirect('/login')"
+    },
+    "CWE-614": {
+        "fix_suggestion": "Ensure all sensitive and authentication cookies include Secure, HttpOnly, and SameSite attributes.",
+        "fixed_code": "response.set_cookie('session_id', token, secure=True, httponly=True, samesite='Lax')"
     }
 }
 
@@ -84,17 +112,28 @@ def get_deterministic_remediation(
     code_snippet: Optional[str] = None,
     payload: Optional[str] = None
 ) -> Tuple[str, str]:
-    """Generates deterministic remediation advice when LLM is offline or disabled."""
+    """Generates context-aware deterministic Python remediation advice when LLM is offline or disabled."""
     norm_cwe = (cwe_id or "").strip().upper()
+
+    # Context-Sensitive CWE-502 (YAML vs. Pickle)
+    if norm_cwe == "CWE-502":
+        snippet_lower = (code_snippet or "").lower()
+        if "yaml" in snippet_lower:
+            return (
+                "Use yaml.safe_load() instead of yaml.load() to prevent arbitrary code execution during YAML parsing.",
+                "import yaml\ndata = yaml.safe_load(user_yaml_input)"
+            )
+        else:
+            return (
+                "Replace untrusted pickle deserialization with safe serialization formats like JSON and verify payload integrity with HMAC.",
+                "import json\ndata = json.loads(raw_payload)"
+            )
+
     template = DETERMINISTIC_REMEDIATIONS.get(norm_cwe)
 
     if template:
         suggestion = template["fix_suggestion"]
         code = template["fixed_code"]
-
-        # Contextualize snippet if available
-        if code_snippet and "execute" in code_snippet and norm_cwe == "CWE-89":
-            code = "# Parameterized query binding:\ncursor.execute('SELECT ... WHERE id = %s', (param,))"
         return (suggestion, code)
 
     return (

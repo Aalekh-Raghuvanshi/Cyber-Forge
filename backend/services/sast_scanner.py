@@ -70,6 +70,7 @@ class SASTScannerService:
             "scan",
             "--config=auto",
             "--json",
+            "--include=*.py",
             target_dir
         ]
 
@@ -98,6 +99,10 @@ class SASTScannerService:
             findings: List[UnifiedFinding] = []
             for item in raw_results:
                 raw_path = item.get("path", "")
+                # Strictly Python-Only
+                if not raw_path.lower().endswith(".py"):
+                    continue
+
                 # Normalize path relative to target_dir
                 try:
                     rel_path = os.path.relpath(raw_path, target_dir)
@@ -172,13 +177,14 @@ class SASTScannerService:
 
     def _run_static_fallback(self, target_dir: str) -> List[UnifiedFinding]:
         """
-        Scans all files in target_dir using the deterministic AST & Regex static analyzer.
-        Fulfills FR-1 offline support and zero-hallucination requirement.
+        Scans all Python files in target_dir using the deterministic AST & Regex static analyzer.
+        Fulfills FR-1 offline support and zero-hallucination requirement. Strictly Python-Only.
         """
         findings: List[UnifiedFinding] = []
         skip_dirs = {
             ".git", ".svn", "__pycache__", "node_modules", "venv", ".venv",
-            "env", "dist", "build", ".next", ".pytest_cache"
+            "env", "dist", "build", ".next", ".pytest_cache", "migrations",
+            "static", "media", "coverage"
         }
 
         for root, dirs, files in os.walk(target_dir):
@@ -186,20 +192,29 @@ class SASTScannerService:
 
             for file in files:
                 ext = os.path.splitext(file)[1].lower()
-                if ext in (".py", ".js", ".ts", ".java", ".go", ".php"):
-                    full_path = os.path.join(root, file)
-                    rel_path = normalize_file_path(os.path.relpath(full_path, target_dir))
+                if ext != ".py":
+                    continue
 
-                    try:
-                        with open(full_path, "r", encoding="utf-8", errors="replace") as f:
-                            content = f.read()
-                        file_findings = self.static_analyzer.analyze_code(
-                            code=content,
-                            file_path=rel_path
-                        )
-                        findings.extend(file_findings)
-                    except Exception as e:
-                        logger.warning(f"Static fallback scan error on {full_path}: {e}")
+                full_path = os.path.join(root, file)
+                # Allow large Django files up to 5MB
+                try:
+                    if os.path.getsize(full_path) > 5 * 1024 * 1024:
+                        continue
+                except Exception:
+                    pass
+
+                rel_path = normalize_file_path(os.path.relpath(full_path, target_dir))
+
+                try:
+                    with open(full_path, "r", encoding="utf-8", errors="replace") as f:
+                        content = f.read()
+                    file_findings = self.static_analyzer.analyze_code(
+                        code=content,
+                        file_path=rel_path
+                    )
+                    findings.extend(file_findings)
+                except Exception as e:
+                    logger.warning(f"Static fallback scan error on {full_path}: {e}")
 
         return findings
 
@@ -314,21 +329,27 @@ class SASTScannerService:
                 # Discovered uniquely by Datadog SAIST AI-native detection
                 intermediate_findings.append(saist_f)
 
-        final_findings: List[UnifiedFinding] = intermediate_findings
+        final_findings: List[UnifiedFinding] = [
+            f for f in intermediate_findings if (f.file or "").lower().endswith(".py")
+        ]
 
         # Sort findings: Highest severity first, then by file, line
         final_findings.sort(
             key=lambda f: (-SEVERITY_ORDER.get(f.severity.upper(), 0), f.file or "", f.line or 0)
         )
 
-        # Count scanned files
+        # Count scanned files (Strictly .py)
         scanned_count = 0
-        skip_dirs = {".git", ".svn", "__pycache__", "node_modules", "venv", ".venv", "env", "dist", "build"}
+        skip_dirs = {
+            ".git", ".svn", "__pycache__", "node_modules", "venv", ".venv",
+            "env", "dist", "build", ".next", ".pytest_cache", "migrations",
+            "static", "media", "coverage"
+        }
         for root, dirs, files in os.walk(abs_folder):
             dirs[:] = [d for d in dirs if d not in skip_dirs and not d.startswith(".")]
             for file in files:
                 ext = os.path.splitext(file)[1].lower()
-                if ext in (".py", ".js", ".ts", ".java", ".go", ".php", ".html"):
+                if ext == ".py":
                     scanned_count += 1
 
         logger.info(f"SAST scan completed: {len(final_findings)} findings across {scanned_count} files.")
@@ -350,9 +371,16 @@ class SASTScannerService:
         """
         Scans a list of in-memory files (e.g. from file upload or API payload).
         Writes them to a secure temporary directory, executes scan_folder, and cleans up.
+        Strictly processes .py files only.
         """
+        py_files = [
+            f for f in files
+            if (f.get("filename") or f.get("filepath") or "").lower().endswith(".py") or
+               "." not in (f.get("filename") or f.get("filepath") or "")
+        ]
+
         with tempfile.TemporaryDirectory() as temp_dir:
-            for item in files:
+            for item in py_files:
                 rel_path = item.get("filename") or item.get("filepath") or "file.py"
                 rel_path = normalize_file_path(rel_path)
                 content = item.get("content", "")

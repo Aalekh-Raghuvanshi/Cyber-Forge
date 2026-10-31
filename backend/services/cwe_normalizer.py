@@ -190,6 +190,22 @@ CANONICAL_CWE_METADATA: Dict[str, Dict[str, Any]] = {
         "confidence": "HIGH",
         "description": "Mass Assignment: The software modifies object attributes from user input without restricting writable fields.",
         "default_remediation": "Use explicit DTOs, schemas, or allowlists for bindable model attributes."
+    },
+    "CWE-1336": {
+        "cwe_id": "CWE-1336",
+        "name": "Server-Side Template Injection (SSTI)",
+        "severity": "CRITICAL",
+        "confidence": "HIGH",
+        "description": "Improper Neutralization of Special Elements in Template Engine (SSTI)",
+        "default_remediation": "Do not render untrusted user input directly as template strings; use static template files and pass variables via context."
+    },
+    "CWE-117": {
+        "cwe_id": "CWE-117",
+        "name": "Improper Output Neutralization for Logs (Log Injection)",
+        "severity": "MEDIUM",
+        "confidence": "HIGH",
+        "description": "Improper Output Neutralization for Logs: Unsanitized user input written to log files can forge log entries or inject malicious control characters.",
+        "default_remediation": "Sanitize user input before writing to logs by stripping newline and carriage return characters."
     }
 }
 
@@ -200,10 +216,11 @@ CANONICAL_CWE_METADATA: Dict[str, Dict[str, Any]] = {
 
 CWE_EQUIVALENCE_GROUPS: Dict[str, Set[str]] = {
     "CWE-89": {"CWE-89", "CWE-564", "CWE-943"},
-    "CWE-79": {"CWE-79", "CWE-80", "CWE-83", "CWE-87"},
+    "CWE-79": {"CWE-79", "CWE-80", "CWE-83", "CWE-87", "CWE-1336"},
     "CWE-22": {"CWE-22", "CWE-23", "CWE-36", "CWE-73"},
     "CWE-78": {"CWE-78", "CWE-77", "CWE-88"},
-    "CWE-94": {"CWE-94", "CWE-95", "CWE-96"},
+    "CWE-94": {"CWE-94", "CWE-95", "CWE-96", "CWE-1336"},
+    "CWE-1336": {"CWE-1336", "CWE-94", "CWE-95", "CWE-79"},
     "CWE-502": {"CWE-502"},
     "CWE-601": {"CWE-601"},
     "CWE-918": {"CWE-918"},
@@ -218,6 +235,8 @@ CWE_EQUIVALENCE_GROUPS: Dict[str, Set[str]] = {
     "CWE-352": {"CWE-352"},
     "CWE-915": {"CWE-915"},
     "CWE-693": {"CWE-693", "CWE-16", "CWE-1032"},
+    "CWE-611": {"CWE-611", "CWE-827"},
+    "CWE-117": {"CWE-117", "CWE-93", "CWE-116"},
 }
 
 
@@ -320,6 +339,20 @@ CWE_VARIANT_MAP: Dict[str, str] = {
     "CWE-96": "CWE-94",    # Static Code Injection
     "96": "CWE-94",
 
+    # Server-Side Template Injection (SSTI) -> CWE-1336
+    "CWE-1336": "CWE-1336",
+    "1336": "CWE-1336",
+
+    # Log Injection / Improper Output Neutralization for Logs -> CWE-117
+    "CWE-117": "CWE-117",
+    "117": "CWE-117",
+    "CWE-93": "CWE-117",
+
+    # XXE -> CWE-611
+    "CWE-611": "CWE-611",
+    "611": "CWE-611",
+    "CWE-827": "CWE-611",
+
     # SSRF -> CWE-918
     "CWE-918": "CWE-918",
     "918": "CWE-918",
@@ -378,11 +411,13 @@ CWE_VARIANT_MAP: Dict[str, str] = {
     "CWE-942": "CWE-693",  # Permissive CORS Policy
     "942": "CWE-693",
 
+    # Sensitive Data Exposure via Debug Mode -> CWE-209
+    "CWE-209": "CWE-209",
+    "209": "CWE-209",
+
     # Information Exposure -> CWE-200
     "CWE-200": "CWE-200",
     "200": "CWE-200",
-    "CWE-209": "CWE-200",  # Generation of Error Message Containing Sensitive Info
-    "209": "CWE-200",
     "CWE-256": "CWE-200",  # Plaintext Storage of Password
     "256": "CWE-200",
     "CWE-312": "CWE-200",  # Cleartext Storage of Sensitive Information
@@ -501,6 +536,8 @@ KEYWORD_TO_CANONICAL_CWE: List[Tuple[re.Pattern, str]] = [
     (re.compile(r'(open[_-]?redirect|untrusted[_-]?redirect)', re.IGNORECASE), "CWE-601"),
     (re.compile(r'(content[_-]?security[_-]?policy|csp|x[_-]?frame[_-]?options|strict[_-]?transport|hsts|x[_-]?content[_-]?type|security[_-]?header|clickjacking)', re.IGNORECASE), "CWE-693"),
     (re.compile(r'(insecure[_-]?deserialization|pickle|unpickler|yaml\.load)', re.IGNORECASE), "CWE-502"),
+    (re.compile(r'(template[_-]?injection|ssti|render_template_string|jinja2\.template)', re.IGNORECASE), "CWE-1336"),
+    (re.compile(r'(log[_-]?injection|crlf[_-]?log|improper[_-]?output[_-]?neutralization.*log)', re.IGNORECASE), "CWE-117"),
     (re.compile(r'(code[_-]?injection|dangerous[_-]?(eval|exec))', re.IGNORECASE), "CWE-94"),
     (re.compile(r'(information[_-]?disclosure|information[_-]?exposure|server[_-]?header|timestamp[_-]?disclosure)', re.IGNORECASE), "CWE-200"),
     (re.compile(r'(csrf|cross[_-]?site[_-]?request)', re.IGNORECASE), "CWE-352"),
