@@ -82,8 +82,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include API routes
+# Include API routes (both /api prefix and root for FR-10 endpoints like /scans and /issues)
 app.include_router(analyze_router, prefix="/api", tags=["analysis"])
+app.include_router(analyze_router, tags=["analysis"])
 
 # Setup rate limiting
 limiter = setup_rate_limiting(app)
@@ -101,7 +102,12 @@ if os.path.exists(frontend_dist):
     async def serve_spa(full_path: str):
         """Serve React SPA - all routes go to index.html"""
         # Don't serve API routes or docs
-        if full_path.startswith("api/") or full_path in ["docs", "redoc", "openapi.json"]:
+        if (
+            full_path.startswith("api/")
+            or full_path.startswith("scans")
+            or full_path.startswith("issues")
+            or full_path in ["docs", "redoc", "openapi.json"]
+        ):
             return None
         
         file_path = os.path.join(frontend_dist, full_path)

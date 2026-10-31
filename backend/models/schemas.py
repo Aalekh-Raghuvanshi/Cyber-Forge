@@ -66,35 +66,68 @@ class UnifiedFinding(BaseModel):
 
 class CorrelatedIssue(BaseModel):
     """
-    Correlated security issue model bridging SAST and DAST findings.
-    Prepared for FR-5, FR-6, and FR-7.
+    FR-5, FR-6, FR-7, FR-9 Correlated Security Issue.
+    Unifies SAST code location with DAST runtime proof into one prioritized, deduplicated issue.
     """
-    issue_id: str = Field(..., description="Unique issue identifier")
-    dedup_key: str = Field(..., description="Deterministic merge key for real bug")
-    cwe_id: str = Field(..., description="Canonical CWE, e.g. 'CWE-89'")
-    vulnerability_type: str = Field(..., description="Standard vulnerability name")
-    severity: Literal["CRITICAL", "HIGH", "MEDIUM", "LOW"] = Field(...)
-    status_label: Literal["Confirmed", "Code only", "Runtime only"] = Field(default="Code only")
-    risk_score: float = Field(default=0.0, description="Calculated risk score based on severity and exploitability")
+    id: int = Field(..., description="Sequential integer identifier (1, 2, ...)")
+    issue_hash: str = Field(..., description="Deterministic SHA-256 key for FR-6 idempotency")
+    status_label: Literal["Confirmed", "Runtime only", "Code only"] = Field(
+        ...,
+        description="FR-7 exact status label: Confirmed (SAST+DAST), Runtime only (DAST), or Code only (SAST)"
+    )
+    priority_rank: int = Field(..., description="1-based priority ranking strictly ordered per FR-9")
+    risk_score: int = Field(..., ge=0, le=100, description="Risk score (0-100) based on severity + exploitability")
+    cwe_id: str = Field(..., description="Canonical CWE ID, e.g. 'CWE-89'")
+    vulnerability_type: str = Field(..., description="Standard vulnerability name, e.g. 'SQL Injection'")
+    severity: Literal["CRITICAL", "HIGH", "MEDIUM", "LOW"] = Field(..., description="Severity level")
 
-    # Findings linked to this issue
-    sast_findings: List[UnifiedFinding] = Field(default_factory=list, description="Linked SAST findings")
-    dast_findings: List[UnifiedFinding] = Field(default_factory=list, description="Linked DAST findings")
+    # SAST Code Location (Present for 'Confirmed' and 'Code only')
+    file: Optional[str] = Field(default=None, description="Source code file path")
+    line: Optional[int] = Field(default=None, description="Vulnerable source line number")
+    end_line: Optional[int] = Field(default=None, description="Vulnerable source end line number")
+    handler_function: Optional[str] = Field(default=None, description="Enclosing route handler function")
+    code_snippet: Optional[str] = Field(default=None, description="Vulnerable code snippet")
 
-    # Consolidated location and evidence
-    file: Optional[str] = Field(default=None, description="Source code file")
-    line: Optional[int] = Field(default=None, description="Source line number")
-    end_line: Optional[int] = Field(default=None, description="Source end line number")
-    code_snippet: Optional[str] = Field(default=None, description="Source code snippet")
-    handler_function: Optional[str] = Field(default=None, description="Handler function name")
-    url_path: Optional[str] = Field(default=None, description="Runtime URL path")
-    http_method: Optional[str] = Field(default=None, description="HTTP method")
-    parameter: Optional[str] = Field(default=None, description="Vulnerable parameter")
-    payload: Optional[str] = Field(default=None, description="Exploit payload")
-    evidence: Optional[str] = Field(default=None, description="Runtime or static proof")
-    description: Optional[str] = Field(default=None, description="Issue description")
-    fix_suggestion: Optional[str] = Field(default=None, description="Remediation guidance")
-    fixed_code: Optional[str] = Field(default=None, description="Secure implementation example")
+    # DAST Runtime Proof (Present for 'Confirmed' and 'Runtime only')
+    http_method: Optional[str] = Field(default=None, description="HTTP method (GET, POST, etc.)")
+    url_path: Optional[str] = Field(default=None, description="Normalized URL endpoint path")
+    parameter: Optional[str] = Field(default=None, description="Vulnerable request parameter")
+    payload: Optional[str] = Field(default=None, description="Observed exploit payload")
+    evidence: Optional[str] = Field(default=None, description="Observed runtime evidence / error output")
+
+    # Sandboxed LLM Remediation (Post-correlation only)
+    fix_suggestion: Optional[str] = Field(default=None, description="Concise explanation of how to remediate")
+    fixed_code: Optional[str] = Field(default=None, description="Drop-in replacement code snippet")
+    description: Optional[str] = Field(default=None, description="Detailed vulnerability description")
+
+    # Traceability & Deduplication Proof (FR-6)
+    matched_route: Optional[str] = Field(default=None, description="Display string of enclosing route definition")
+    supporting_scanners: List[str] = Field(default_factory=list, description="Scanners confirming this bug, e.g. ['SAST', 'DAST']")
+    merged_count: int = Field(default=1, description="Number of raw scanner findings merged into this issue")
+
+
+class FullScanRequest(BaseModel):
+    """Request schema for full SAST + DAST correlation scan (POST /scans)."""
+    source_folder: Optional[str] = Field(default=None, description="Local path to source code folder")
+    files: Optional[List[Dict[str, str]]] = Field(default=None, description="Optional in-memory source files list")
+    target_url: Optional[str] = Field(default=None, description="Live web application target URL for DAST")
+    zap_api_url: Optional[str] = Field(default="http://localhost:8090", description="OWASP ZAP daemon URL")
+    zap_api_key: Optional[str] = Field(default=None, description="OWASP ZAP API key")
+    raw_zap_alerts: Optional[List[Dict[str, Any]]] = Field(default=None, description="Pre-captured ZAP report alerts for offline mode")
+    generate_fixes: Optional[bool] = Field(default=True, description="Generate sandboxed remediation fixes")
+
+
+class FullScanResponse(BaseModel):
+    """Response schema for full correlation scan results."""
+    success: bool = Field(..., description="Whether the scan and correlation completed successfully")
+    scan_id: str = Field(..., description="Unique scan execution ID")
+    total_issues: int = Field(..., description="Total correlated issues found")
+    confirmed_count: int = Field(..., description="Number of Confirmed issues (SAST + DAST)")
+    runtime_only_count: int = Field(..., description="Number of Runtime only issues (DAST only)")
+    code_only_count: int = Field(..., description="Number of Code only issues (SAST only)")
+    route_map: List[RouteEntry] = Field(default_factory=list, description="AST Route Map extracted from code")
+    issues: List[CorrelatedIssue] = Field(default_factory=list, description="Prioritized list of correlated issues")
+    error: Optional[str] = Field(default=None, description="Error message if scan failed")
 
 
 class SASTScanRequest(BaseModel):

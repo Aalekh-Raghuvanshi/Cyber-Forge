@@ -13,13 +13,16 @@ from backend.models.schemas import (
     AnalysisRequest, AnalysisResponse, HealthResponse,
     MultiFileAnalysisRequest, MultiFileAnalysisResponse, FileAnalysisResult,
     SASTScanRequest, SASTScanResponse, RouteEntry,
-    DASTScanRequest, DASTScanResponse
+    DASTScanRequest, DASTScanResponse,
+    CorrelatedIssue, FullScanRequest, FullScanResponse
 )
 from backend.services.analyzer import get_analyzer_service
-from backend.services.llm_service import get_llm_service
+from backend.services.llm_service import get_llm_service, get_deterministic_remediation
 from backend.services.sast_scanner import get_sast_scanner_service
 from backend.services.dast_scanner import get_dast_scanner
 from backend.services.route_mapper import extract_routes_from_folder
+from backend.services.correlator import get_correlation_engine
+from backend.services.store import get_issue_store
 from backend.config import settings
 from backend.utils.rate_limit import get_rate_limit_remaining, update_rate_limit, limiter
 from backend.utils.logger import get_logger, set_correlation_id
@@ -145,6 +148,150 @@ async def dast_scan(
     scanner = get_dast_scanner()
     result = scanner.scan(request_data)
     return result
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: Full SAST + DAST Correlation Engine (FR-5, FR-6, FR-7, FR-9, FR-10)
+# ---------------------------------------------------------------------------
+
+async def _execute_full_scan(
+    request: Request,
+    request_data: FullScanRequest
+) -> FullScanResponse:
+    correlation_id = request.headers.get("X-Correlation-ID", str(uuid.uuid4()))
+    set_correlation_id(correlation_id)
+    scan_id = str(uuid.uuid4())
+
+    sast_scanner = get_sast_scanner_service()
+    dast_scanner = get_dast_scanner()
+    correlator = get_correlation_engine()
+    store = get_issue_store()
+    llm = get_llm_service()
+
+    # Step 1: Run SAST + Route Map Extraction (Phase 1)
+    sast_findings = []
+    route_map = []
+
+    if request_data.source_folder:
+        if not os.path.exists(request_data.source_folder):
+            raise HTTPException(status_code=400, detail=f"Source folder does not exist: {request_data.source_folder}")
+        sast_res = sast_scanner.scan_folder(request_data.source_folder)
+        sast_findings = sast_res.findings
+        route_map = sast_res.route_map
+    elif request_data.files:
+        sast_res = sast_scanner.scan_files(request_data.files)
+        sast_findings = sast_res.findings
+        route_map = sast_res.route_map
+
+    # Step 2: Run DAST Scan / Ingestion (Phase 2)
+    dast_findings = []
+    if request_data.raw_zap_alerts:
+        dast_findings = dast_scanner.parse_zap_alerts(request_data.raw_zap_alerts)
+    elif request_data.target_url:
+        seed_routes = [r.url_path for r in route_map] if route_map else None
+        dast_res = dast_scanner.scan(DASTScanRequest(
+            target_url=request_data.target_url,
+            zap_api_url=request_data.zap_api_url,
+            zap_api_key=request_data.zap_api_key,
+            seed_routes=seed_routes
+        ))
+        dast_findings = dast_res.findings
+
+    # Step 3: Correlation & Deduplication & Ranking (Phase 3)
+    correlated_issues = correlator.correlate(
+        sast_findings=sast_findings,
+        dast_findings=dast_findings,
+        route_map=route_map
+    )
+
+    # Step 4: Sandboxed LLM Remediation (strictly temperature=0.0 on already correlated issues)
+    if request_data.generate_fixes:
+        for issue in correlated_issues:
+            if not issue.fix_suggestion or not issue.fixed_code:
+                if llm:
+                    try:
+                        suggestion, code = await llm.generate_remediation(
+                            cwe_id=issue.cwe_id,
+                            vulnerability_type=issue.vulnerability_type,
+                            file=issue.file,
+                            line=issue.line,
+                            code_snippet=issue.code_snippet,
+                            payload=issue.payload,
+                            evidence=issue.evidence
+                        )
+                        issue.fix_suggestion = suggestion
+                        issue.fixed_code = code
+                    except Exception:
+                        suggestion, code = get_deterministic_remediation(
+                            cwe_id=issue.cwe_id,
+                            vulnerability_type=issue.vulnerability_type,
+                            code_snippet=issue.code_snippet,
+                            payload=issue.payload
+                        )
+                        issue.fix_suggestion = suggestion
+                        issue.fixed_code = code
+                else:
+                    suggestion, code = get_deterministic_remediation(
+                        cwe_id=issue.cwe_id,
+                        vulnerability_type=issue.vulnerability_type,
+                        code_snippet=issue.code_snippet,
+                        payload=issue.payload
+                    )
+                    issue.fix_suggestion = suggestion
+                    issue.fixed_code = code
+
+    # Step 5: Idempotent SQLite Persistence (FR-6 / FR-10)
+    persisted_issues = store.save_scan(
+        scan_id=scan_id,
+        source_folder=request_data.source_folder,
+        target_url=request_data.target_url,
+        issues=correlated_issues,
+        route_map=route_map
+    )
+
+    confirmed_cnt = sum(1 for i in persisted_issues if i.status_label == "Confirmed")
+    runtime_cnt = sum(1 for i in persisted_issues if i.status_label == "Runtime only")
+    code_cnt = sum(1 for i in persisted_issues if i.status_label == "Code only")
+
+    return FullScanResponse(
+        success=True,
+        scan_id=scan_id,
+        total_issues=len(persisted_issues),
+        confirmed_count=confirmed_cnt,
+        runtime_only_count=runtime_cnt,
+        code_only_count=code_cnt,
+        route_map=route_map,
+        issues=persisted_issues
+    )
+
+
+@router.post("/scans", response_model=FullScanResponse)
+@router.post("/api/scans", response_model=FullScanResponse)
+async def create_scan(request: Request, request_data: FullScanRequest) -> FullScanResponse:
+    """POST /scans endpoint per FR-10."""
+    return await _execute_full_scan(request, request_data)
+
+
+@router.get("/issues", response_model=List[CorrelatedIssue])
+@router.get("/api/issues", response_model=List[CorrelatedIssue])
+async def list_issues(
+    status_label: Optional[str] = None,
+    cwe_id: Optional[str] = None
+) -> List[CorrelatedIssue]:
+    """GET /issues endpoint per FR-9 and FR-10."""
+    store = get_issue_store()
+    return store.get_issues(status_label=status_label, cwe_id=cwe_id)
+
+
+@router.get("/issues/{issue_id}", response_model=CorrelatedIssue)
+@router.get("/api/issues/{issue_id}", response_model=CorrelatedIssue)
+async def get_issue_detail(issue_id: int) -> CorrelatedIssue:
+    """GET /issues/{id} endpoint per FR-7 and FR-10."""
+    store = get_issue_store()
+    issue = store.get_issue_by_id(issue_id)
+    if not issue:
+        raise HTTPException(status_code=404, detail=f"Issue with ID {issue_id} not found")
+    return issue
 
 
 # ---------------------------------------------------------------------------
