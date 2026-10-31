@@ -387,7 +387,7 @@ async def get_config():
     """
     return {
         "llm_mode": settings.llm_mode,
-        "model": settings.openai_model if settings.llm_mode == "online" else settings.ollama_model,
+        "model": settings.groq_model if settings.llm_mode == "groq" else settings.ollama_model,
         "max_code_length": settings.max_code_length,
         "analysis_timeout": settings.analysis_timeout
     }

@@ -5,41 +5,25 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 def test_llm_service_mode_fix():
-    """Test that LLM service correctly handles openai, gemini, ollama modes."""
+    """Test that LLM service correctly handles groq and ollama modes."""
     print("Testing LLM Service Mode Fix...")
     
     from backend.services.llm_service import LLMService
     
-    # Test OpenAI mode
+    # Test Groq mode
     with patch('backend.services.llm_service.settings') as mock_settings:
-        mock_settings.llm_mode = "openai"
-        mock_settings.openai_api_key = "test-key"
-        mock_settings.openai_model = "gpt-4o-mini"
+        mock_settings.llm_mode = "groq"
+        mock_settings.groq_api_key = "test-key"
+        mock_settings.groq_model = "llama-3.3-70b-versatile"
         
-        with patch('backend.services.llm_service.OpenAI') as mock_openai:
+        with patch('backend.services.llm_service.Groq') as mock_groq:
             mock_client = MagicMock()
-            mock_openai.return_value = mock_client
+            mock_groq.return_value = mock_client
             
             service = LLMService()
-            assert service.mode == "openai"
-            assert service.model == "gpt-4o-mini"
-            print("  ✅ OpenAI mode: PASSED")
-    
-    # Test Gemini mode
-    with patch('backend.services.llm_service.settings') as mock_settings, \
-         patch('backend.services.llm_service.genai') as mock_genai:
-        
-        mock_settings.llm_mode = "gemini"
-        mock_settings.gemini_api_key = "test-key"
-        mock_settings.gemini_model = "gemini-2.0-flash"
-        
-        mock_model = MagicMock()
-        mock_genai.GenerativeModel.return_value = mock_model
-        
-        service = LLMService()
-        assert service.mode == "gemini"
-        assert service.model == "gemini-2.0-flash"
-        print("  ✅ Gemini mode: PASSED")
+            assert service.mode == "groq"
+            assert service.model == "llama-3.3-70b-versatile"
+            print("  ✅ Groq mode: PASSED")
     
     # Test Ollama mode
     with patch('backend.services.llm_service.settings') as mock_settings:
@@ -184,8 +168,7 @@ def main():
     
     for test in tests:
         try:
-            with patch('builtins.print'):  # Suppress print for clean output
-                test()
+            test()
             passed += 1
             print(f"✅ {test.__name__}: PASSED")
         except Exception as e:

@@ -25,3 +25,11 @@ dist-ssr
 __pycache__
 .pytest_cache
 *.db
+
+# Environment variables
+.env
+.env*.local
+!.env.example
+
+venv
+venv312

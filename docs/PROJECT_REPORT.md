@@ -24,7 +24,7 @@ The main goal of the project was to create a practical tool that helps developer
 
 ## Keywords
 
-LLM, Static Analysis, Secure Coding, Vulnerability Detection, FastAPI, React, Ollama, Gemini, Code Security
+LLM, Static Analysis, Secure Coding, Vulnerability Detection, FastAPI, React, Ollama, Groq, Code Security
 
 ## 1. Introduction
 
@@ -68,7 +68,7 @@ The project does not replace full manual penetration testing or advanced enterpr
 | Backend | Python 3.12+, FastAPI, Pydantic, httpx |
 | Frontend | React 19, Vite, React Router, Tailwind CSS, Framer Motion |
 | Access | No authentication or login layer |
-| AI / Analysis | LLM service abstraction, Ollama, documented Gemini/OpenAI configuration, static analyzer |
+| AI / Analysis | LLM service abstraction, Ollama, Groq configuration, static analyzer |
 | Reporting | JSON export, Markdown export, PDF export using `html2pdf.js` |
 | Developer Tooling | ESLint, Vite build, Python bytecode compilation |
 
@@ -78,7 +78,7 @@ Based on the README, the project requires:
 
 1. Python 3.12 or above
 2. Node.js 18 or above
-3. Google Gemini API key for online mode or Ollama for offline mode
+3. Groq API key for online mode or Ollama for offline mode
 
 ### 5.2 Installation Procedure
 

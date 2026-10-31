@@ -46,10 +46,8 @@ async def lifespan(app: FastAPI):
     
     print(f"🚀 LLM Code Analyser starting...")
     print(f"📊 Mode: {settings.llm_mode}")
-    if settings.llm_mode == "openai":
-        print(f"🤖 Model: {settings.openai_model}")
-    elif settings.llm_mode == "gemini":
-        print(f"🤖 Model: {settings.gemini_model}")
+    if settings.llm_mode == "groq":
+        print(f"🤖 Model: {settings.groq_model}")
     else:
         print(f"🤖 Model: {settings.ollama_model}")
     

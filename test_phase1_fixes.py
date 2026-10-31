@@ -8,39 +8,21 @@ from backend.services.llm_service import LLMService, LLMError
 from backend.config import Settings
 
 
-def test_llm_service_openai_mode():
-    """Test LLM service initialization in OpenAI mode."""
+def test_llm_service_groq_mode():
+    """Test LLM service initialization in Groq mode."""
     with patch('backend.services.llm_service.settings') as mock_settings:
-        mock_settings.llm_mode = "openai"
-        mock_settings.openai_api_key = "test-key"
-        mock_settings.openai_model = "gpt-4o-mini"
+        mock_settings.llm_mode = "groq"
+        mock_settings.groq_api_key = "test-key"
+        mock_settings.groq_model = "llama-3.3-70b-versatile"
 
-        with patch('backend.services.llm_service.OpenAI') as mock_openai:
+        with patch('backend.services.llm_service.Groq') as mock_groq:
             mock_client = MagicMock()
-            mock_openai.return_value = mock_client
+            mock_groq.return_value = mock_client
 
             service = LLMService()
-            assert service.mode == "openai"
-            assert service.model == "gpt-4o-mini"
+            assert service.mode == "groq"
+            assert service.model == "llama-3.3-70b-versatile"
             assert service.client == mock_client
-
-
-def test_llm_service_gemini_mode():
-    """Test LLM service initialization in Gemini mode."""
-    with patch('backend.services.llm_service.settings') as mock_settings, \
-         patch('backend.services.llm_service.genai') as mock_genai:
-
-        mock_settings.llm_mode = "gemini"
-        mock_settings.gemini_api_key = "test-key"
-        mock_settings.gemini_model = "gemini-2.0-flash"
-
-        mock_model = MagicMock()
-        mock_genai.GenerativeModel.return_value = mock_model
-
-        service = LLMService()
-        assert service.mode == "gemini"
-        assert service.model == "gemini-2.0-flash"
-        assert service.gemini_model == mock_model
 
 
 def test_llm_service_ollama_mode():
@@ -70,10 +52,10 @@ def test_settings_validation():
     settings = Settings()
 
     assert hasattr(settings, 'llm_mode')
-    assert hasattr(settings, 'openai_api_key')
-    assert hasattr(settings, 'openai_model')
-    assert hasattr(settings, 'gemini_api_key')
-    assert hasattr(settings, 'gemini_model')
+    assert hasattr(settings, 'groq_api_key')
+    assert hasattr(settings, 'groq_model')
+    assert not hasattr(settings, 'openai_api_key')
+    assert not hasattr(settings, 'gemini_api_key')
     assert hasattr(settings, 'ollama_base_url')
     assert hasattr(settings, 'ollama_model')
     assert hasattr(settings, 'max_code_length')

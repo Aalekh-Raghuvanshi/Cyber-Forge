@@ -18,20 +18,14 @@ Install these tools first:
 - **npm** (comes with Node.js)
 - **One model backend**
   - **Ollama** for offline/local analysis, or
-  - **OpenAI API key** for cloud analysis
+  - **Groq API key** for cloud analysis
 
-## 2. Important Note About the Current Repository
+## 2. Model Backend Modes
 
-The main project README and startup scripts refer to `gemini` mode, but the current backend implementation in `backend/services/llm_service.py` is wired for:
+The backend supports two deterministic LLM modes:
 
-- `online` mode using **OpenAI**
-- `ollama` mode using **Ollama**
-
-Because of that:
-
-- **Offline mode with Ollama is the most reliable path**
-- **Cloud mode should be started manually with `LLM_MODE=online`**
-- The provided Bash scripts are useful on macOS/Linux, but the cloud-mode naming in the repository is not fully aligned
+- `groq` mode using **Groq** (`llama-3.3-70b-versatile`)
+- `ollama` mode using **Ollama** (`codellama`)
 
 This guide therefore documents the setup path that matches the current code.
 
@@ -115,13 +109,9 @@ Use this as a practical local setup template:
 # App mode
 LLM_MODE=ollama
 
-# OpenAI configuration for cloud mode
-OPENAI_API_KEY=your-openai-api-key-here
-OPENAI_MODEL=gpt-4o-mini
-
-# Gemini values may exist in the repo config, but current backend run logic is not using them directly
-GEMINI_API_KEY=your-gemini-api-key-here
-GEMINI_MODEL=gemini-1.5-flash
+# Groq configuration for cloud mode
+GROQ_API_KEY=your-groq-api-key-here
+GROQ_MODEL=llama-3.3-70b-versatile
 
 # Ollama configuration
 OLLAMA_BASE_URL=http://localhost:11434
@@ -143,7 +133,7 @@ The application has no login or authentication flow. No OAuth credentials, secre
 You have two practical options:
 
 1. **Offline local mode with Ollama**
-2. **Cloud mode with OpenAI**
+2. **Cloud mode with Groq**
 
 If you only want the easiest working local setup, use **Ollama mode**.
 
@@ -232,16 +222,16 @@ For the simplest browser workflow:
 - Run backend manually on `8000`
 - Run frontend dev server on `3000`
 
-## 11. Run Option B: Cloud Mode with OpenAI
+## 11. Run Option B: Cloud Mode with Groq
 
 ### Step 1: Set `.env`
 
 Use:
 
 ```env
-LLM_MODE=online
-OPENAI_API_KEY=your-openai-api-key
-OPENAI_MODEL=gpt-4o-mini
+LLM_MODE=groq
+GROQ_API_KEY=your-groq-api-key
+GROQ_MODEL=llama-3.3-70b-versatile
 PORT=8000
 ```
 
@@ -251,7 +241,7 @@ PORT=8000
 
 ```bash
 source venv/bin/activate
-export LLM_MODE=online
+export LLM_MODE=groq
 export PORT=8000
 python -m backend.app
 ```
@@ -260,7 +250,7 @@ python -m backend.app
 
 ```powershell
 .\venv\Scripts\Activate.ps1
-$env:LLM_MODE="online"
+$env:LLM_MODE="groq"
 $env:PORT="8000"
 python -m backend.app
 ```
@@ -269,7 +259,7 @@ python -m backend.app
 
 ```cmd
 venv\Scripts\activate
-set LLM_MODE=online
+set LLM_MODE=groq
 set PORT=8000
 python -m backend.app
 ```
@@ -297,16 +287,9 @@ The repository includes:
 
 This script:
 
-- starts the backend on port `8000`
+- starts the backend on port `8000` with `LLM_MODE=groq`
 - starts the frontend on port `3000`
 - cleans up old processes on those ports
-
-However, note again:
-
-- the script exports `LLM_MODE=gemini`
-- the current backend implementation is not fully aligned with that naming
-
-So if you hit model startup or analysis issues, use the **manual start instructions** in Section 11 instead.
 
 ## 13. How to Verify It Is Running
 
@@ -384,7 +367,7 @@ On Windows, stop them by:
 Fix:
 
 - If using offline mode, confirm `ollama serve` is running
-- If using cloud mode, confirm `OPENAI_API_KEY` is valid
+- If using cloud mode, confirm `GROQ_API_KEY` is valid
 - If you used `./start_dev.sh`, try the manual startup path with `LLM_MODE=online`
 
 ### Problem: Port already in use
@@ -421,7 +404,7 @@ To run this project on a PC or laptop:
 - install Python and Node.js
 - install backend and frontend dependencies
 - configure `.env`
-- start Ollama or use OpenAI cloud mode
+- start Ollama or configure Groq for online mode
 - run backend and frontend locally
 
 For the current repository state, **manual startup is the safest approach**, and **Ollama offline mode is the most reliable local run option**.

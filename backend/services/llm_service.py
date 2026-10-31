@@ -1,5 +1,5 @@
 """
-LLM Service for interacting with OpenAI, Google Gemini, and Ollama.
+LLM Service for interacting with Groq and Ollama.
 Provides unified interface for all LLM modes.
 Includes Phase 3 sandboxed remediation generator (temperature=0.0) with deterministic CWE template fallback.
 """
@@ -7,13 +7,12 @@ Includes Phase 3 sandboxed remediation generator (temperature=0.0) with determin
 import json
 import httpx
 from typing import Optional, Tuple, Dict, Any
-from openai import OpenAI, OpenAIError
 
 try:
-    import google.generativeai as genai
-    GEMINI_AVAILABLE = True
+    from groq import Groq, GroqError
+    GROQ_AVAILABLE = True
 except ImportError:
-    GEMINI_AVAILABLE = False
+    GROQ_AVAILABLE = False
 
 from backend.config import settings
 from backend.utils.prompt_engine import build_remediation_prompt
@@ -104,29 +103,23 @@ def get_deterministic_remediation(
 
 
 class LLMService:
-    """Service for LLM interactions supporting OpenAI, Gemini, and Ollama."""
+    """Service for LLM interactions supporting Groq and Ollama."""
 
     def __init__(self):
         self.mode = settings.llm_mode
 
-        if self.mode == "openai":
-            if not settings.openai_api_key:
-                raise ValueError("OPENAI_API_KEY is required for openai mode")
-            self.client = OpenAI(api_key=settings.openai_api_key)
-            self.model = settings.openai_model
-        elif self.mode == "gemini":
-            if not GEMINI_AVAILABLE:
-                raise ValueError("google-generativeai package not installed. Run: pip install google-generativeai")
-            if not settings.gemini_api_key:
-                raise ValueError("GEMINI_API_KEY is required for gemini mode")
-            genai.configure(api_key=settings.gemini_api_key)
-            self.model = settings.gemini_model
-            self.gemini_model = genai.GenerativeModel(self.model)
+        if self.mode == "groq":
+            if not GROQ_AVAILABLE:
+                raise ValueError("groq package not installed. Run: pip install groq")
+            if not settings.groq_api_key:
+                raise ValueError("GROQ_API_KEY is required for groq mode")
+            self.client = Groq(api_key=settings.groq_api_key)
+            self.model = settings.groq_model
         elif self.mode == "ollama":
             self.ollama_url = settings.ollama_base_url
             self.model = settings.ollama_model
         else:
-            raise ValueError(f"Unknown LLM mode: {self.mode}. Must be 'openai', 'gemini', or 'ollama'")
+            raise ValueError(f"Unknown LLM mode: {self.mode}. Must be 'groq' or 'ollama'")
 
     async def generate_remediation(
         self,
@@ -155,7 +148,7 @@ class LLMService:
         )
 
         try:
-            if self.mode == "openai":
+            if self.mode == "groq":
                 response = self.client.chat.completions.create(
                     model=self.model,
                     messages=[
@@ -170,22 +163,6 @@ class LLMService:
                     response_format={"type": "json_object"}
                 )
                 parsed = self._parse_response(response.choices[0].message.content)
-                suggestion = parsed.get("fix_suggestion")
-                fixed_code = parsed.get("fixed_code")
-                if suggestion and fixed_code:
-                    return (suggestion, fixed_code)
-
-            elif self.mode == "gemini":
-                generation_config = genai.GenerationConfig(
-                    temperature=0.0,
-                    max_output_tokens=1024,
-                    response_mime_type="application/json"
-                )
-                response = await self.gemini_model.generate_content_async(
-                    prompt,
-                    generation_config=generation_config
-                )
-                parsed = self._parse_response(response.text)
                 suggestion = parsed.get("fix_suggestion")
                 fixed_code = parsed.get("fixed_code")
                 if suggestion and fixed_code:
@@ -223,15 +200,13 @@ class LLMService:
 
     async def analyze(self, prompt: str) -> dict:
         """Send legacy prompt to LLM and get structured response."""
-        if self.mode == "openai":
-            return await self._analyze_openai(prompt)
-        elif self.mode == "gemini":
-            return await self._analyze_gemini(prompt)
+        if self.mode == "groq":
+            return await self._analyze_groq(prompt)
         else:
             return await self._analyze_ollama(prompt)
 
-    async def _analyze_openai(self, prompt: str) -> dict:
-        """Analyze using OpenAI API."""
+    async def _analyze_groq(self, prompt: str) -> dict:
+        """Analyze using Groq API."""
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -252,30 +227,10 @@ class LLMService:
             content = response.choices[0].message.content
             return self._parse_response(content)
 
-        except OpenAIError as e:
-            raise LLMError(f"OpenAI API error: {str(e)}")
+        except GroqError as e:
+            raise LLMError(f"Groq API error: {str(e)}")
         except Exception as e:
-            raise LLMError(f"Unexpected error during OpenAI analysis: {str(e)}")
-
-    async def _analyze_gemini(self, prompt: str) -> dict:
-        """Analyze using Google Gemini API."""
-        try:
-            generation_config = genai.GenerationConfig(
-                temperature=0.1,
-                max_output_tokens=4096,
-                response_mime_type="application/json"
-            )
-
-            response = await self.gemini_model.generate_content_async(
-                prompt,
-                generation_config=generation_config
-            )
-
-            content = response.text
-            return self._parse_response(content)
-
-        except Exception as e:
-            raise LLMError(f"Gemini API error: {str(e)}")
+            raise LLMError(f"Unexpected error during Groq analysis: {str(e)}")
 
     async def _analyze_ollama(self, prompt: str) -> dict:
         """Analyze using Ollama local model."""
@@ -317,15 +272,9 @@ class LLMService:
 
     def health_check(self) -> bool:
         """Check if the LLM service is available."""
-        if self.mode == "openai":
+        if self.mode == "groq":
             try:
                 self.client.models.list()
-                return True
-            except Exception:
-                return False
-        elif self.mode == "gemini":
-            try:
-                self.gemini_model.generate_content("test", generation_config=genai.GenerationConfig(max_output_tokens=1))
                 return True
             except Exception:
                 return False

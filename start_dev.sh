@@ -4,20 +4,32 @@
 # Frontend: http://localhost:3000
 # Backend: http://localhost:8000
 
+REQUIRED_PYTHON_BIN="${PYTHON_BIN:-python3.12}"
+
+if ! command -v "$REQUIRED_PYTHON_BIN" >/dev/null 2>&1; then
+    echo "❌ Python 3.12 is required for this project. Install python3.12 or set PYTHON_BIN to a Python 3.12 interpreter."
+    exit 1
+fi
+
 echo "🚀 Starting LLM Code Analyser (Development Mode)"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-# Check if virtual environment exists
-if [ ! -d "venv" ]; then
-    echo "❌ Virtual environment not found. Run: python3 -m venv venv"
-    exit 1
+if [ ! -d "venv" ] || [ "$(./venv/bin/python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo 'missing')" != "3.12" ]; then
+    echo "📦 Recreating virtual environment with $REQUIRED_PYTHON_BIN..."
+    rm -rf venv
+    "$REQUIRED_PYTHON_BIN" -m venv venv
 fi
 
 # Activate virtual environment
 source venv/bin/activate
 
+if [ "$(python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')" != "3.12" ]; then
+    echo "❌ This project requires Python 3.12.x. Detected: $(python --version 2>&1)"
+    exit 1
+fi
+
 # Set environment for online mode
-export LLM_MODE=gemini
+export LLM_MODE=groq
 export PORT=8000
 
 # Kill any existing processes on ports 3000 and 8000

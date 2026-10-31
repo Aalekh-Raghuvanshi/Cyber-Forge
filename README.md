@@ -9,7 +9,7 @@ AI-powered code security analysis tool that combines Large Language Models with 
 ## ✨ Features
 
 ### Core Analysis
-- **🤖 AI-Driven Analysis**: Uses Google Gemini or local Ollama models for intelligent vulnerability detection
+- **🤖 AI-Driven Analysis**: Uses Groq or local Ollama models for intelligent vulnerability detection
 - **📊 Static Analysis**: Pattern-based detection for 20+ common security issues
 - **🔄 Hybrid Intelligence**: Combines LLM insights with rule-based verification
 - **🌐 Multi-Language Support**: Python, JavaScript, Java, C/C++, PHP, Go, Rust
@@ -44,9 +44,9 @@ AI-powered code security analysis tool that combines Large Language Models with 
 
 ### Prerequisites
 
-- Python 3.12+
+- Python 3.12.x (required; Python 3.15 currently fails with the `semgrep` dependency chain)
 - Node.js 18+ (for frontend development)
-- Google Gemini API key (for online mode) OR Ollama (for offline mode)
+- Groq API key (for online mode) OR Ollama (for offline mode)
 
 ### Installation
 
@@ -58,7 +58,7 @@ AI-powered code security analysis tool that combines Large Language Models with 
 
 2. **Create virtual environment**
    ```bash
-   python3 -m venv venv
+   python3.12 -m venv venv
    source venv/bin/activate  # On Windows: venv\Scripts\activate
    ```
 
@@ -90,7 +90,7 @@ AI-powered code security analysis tool that combines Large Language Models with 
    # Backend: http://localhost:8000
    ```
    
-   **Production - Online Mode (Gemini):**
+   **Production - Online Mode (Groq):**
    ```bash
    ./start_online.sh
    # Access: http://localhost:8000
@@ -112,13 +112,11 @@ No account or sign-in is required. The landing page, analyzer, and analysis API 
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `LLM_MODE` | `gemini`, `openai`, or `ollama` | `gemini` |
-| `GEMINI_API_KEY` | Your Google Gemini API key | - |
-| `GEMINI_MODEL` | Gemini model to use | `gemini-2.0-flash` |
-| `OPENAI_API_KEY` | Your OpenAI API key | - |
-| `OPENAI_MODEL` | OpenAI model to use | `gpt-4o-mini` |
+| `LLM_MODE` | `groq` or `ollama` | `groq` |
+| `GROQ_API_KEY` | Your Groq API key | - |
+| `GROQ_MODEL` | Groq model to use | `llama-3.3-70b-versatile` |
 | `OLLAMA_BASE_URL` | Ollama server URL | `http://localhost:11434` |
-| `OLLAMA_MODEL` | Ollama model to use | `qwen3-coder:480b-cloud` |
+| `OLLAMA_MODEL` | Ollama model to use | `codellama` |
 | `PORT` | Server port | `8000` |
 
 ### Startup Scripts
@@ -126,7 +124,7 @@ No account or sign-in is required. The landing page, analyzer, and analysis API 
 | Script | Mode | Port | Description |
 |--------|------|------|-------------|
 | `./start_dev.sh` | Development | 3000 (FE) + 8000 (BE) | Hot-reload |
-| `./start_online.sh` | Production (Gemini) | 8000 | Cloud-based AI analysis |
+| `./start_online.sh` | Production (Groq) | 8000 | Cloud-based AI analysis |
 | `./start_offline.sh` | Production (Ollama) | 8001 | Local AI analysis |
 
 All scripts automatically kill existing processes on their ports before starting.
@@ -195,7 +193,7 @@ LLM-Code-Analyzer/
 │   │   ├── analyze.py         # Analysis API endpoints
 │   ├── services/
 │   │   ├── analyzer.py        # Main analysis orchestration
-│   │   ├── llm_service.py     # LLM integration (Gemini/OpenAI/Ollama)
+│   │   ├── llm_service.py     # LLM integration (Groq/Ollama)
 │   │   └── static_analyzer.py # Rule-based analysis (20+ patterns)
 │   ├── models/
 │   │   └── schemas.py         # Pydantic request/response models
@@ -218,7 +216,7 @@ LLM-Code-Analyzer/
 ├── data/                      # Sample vulnerable code
 ├── docs/                      # Documentation
 ├── start_dev.sh               # Development mode (FE + BE with hot-reload)
-├── start_online.sh            # Production with Gemini (port 8000)
+├── start_online.sh            # Production with Groq (port 8000)
 ├── start_offline.sh           # Production with Ollama (port 8001)
 ├── requirements.txt           # Python dependencies
 ├── .gitignore                 # Git ignore rules
@@ -365,7 +363,7 @@ cd frontend && npm run build
 
 ## ✅ Completed Features
 
-- [x] AI-driven vulnerability detection (Gemini/Ollama)
+- [x] AI-driven vulnerability detection (Groq/Ollama)
 - [x] Static analysis with 20+ patterns
 - [x] Syntax highlighting (Prism.js)
 - [x] Line highlighting for vulnerabilities (severity-based colors)
@@ -404,7 +402,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 - Built with [FastAPI](https://fastapi.tiangolo.com/)
 - Frontend powered by [React](https://react.dev/) + [Vite](https://vitejs.dev/) + [Tailwind CSS](https://tailwindcss.com/)
-- AI powered by [Google Gemini](https://ai.google.dev/) and [Ollama](https://ollama.ai/)
+- AI powered by [Groq](https://groq.com/) and [Ollama](https://ollama.ai/)
 - Syntax highlighting by [Prism.js](https://prismjs.com/)
 - PDF export by [html2pdf.js](https://ekoopmans.github.io/html2pdf.js/)
 - Animations by [Framer Motion](https://www.framer.com/motion/)

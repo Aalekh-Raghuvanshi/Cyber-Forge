@@ -51,7 +51,7 @@ Source: [PROJECT_REPORT.md](/Users/aggimallaabhishek/Documents/LLM-Code-Analyzer
 
 - Backend: Python, FastAPI, Pydantic, httpx
 - Frontend: React, Vite, React Router, Tailwind CSS, Framer Motion
-- AI Layer: Gemini/OpenAI configuration and Ollama offline mode
+- AI Layer: Groq online mode and Ollama offline mode
 - Reporting: JSON, Markdown, PDF export
 - Tooling: ESLint, Vite build, Python compile checks
 
@@ -59,7 +59,7 @@ Source: [PROJECT_REPORT.md](/Users/aggimallaabhishek/Documents/LLM-Code-Analyzer
 
 - Python 3.12+
 - Node.js 18+
-- Gemini API key for online mode or Ollama for offline mode
+- Groq API key for online mode or Ollama for offline mode
 - Installation flow:
 - Clone repository
 - Create virtual environment
