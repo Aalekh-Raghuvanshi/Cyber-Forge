@@ -1,0 +1,186 @@
+{
+  "app": "app_a",
+  "base_url": "http://127.0.0.1:5001",
+  "probes": [
+    {
+      "case_id": "A01",
+      "type": "SQL Injection",
+      "cwe": "CWE-89",
+      "path": "/api/catalog/search",
+      "parameter": "term",
+      "payload": "%' OR '1'='1'-- ",
+      "assertion": "json_array_length_greater_than_1"
+    },
+    {
+      "case_id": "A02",
+      "type": "SQL Injection",
+      "cwe": "CWE-89",
+      "path": "/api/customers/lookup",
+      "parameter": "email",
+      "payload": "' OR '1'='1'-- ",
+      "assertion": "json_array_length_greater_than_1"
+    },
+    {
+      "case_id": "A03",
+      "type": "SQL Injection",
+      "cwe": "CWE-89",
+      "path": "/api/orders/status",
+      "parameter": "status",
+      "payload": "' OR '1'='1'-- ",
+      "assertion": "json_array_length_greater_than_1"
+    },
+    {
+      "case_id": "A04",
+      "type": "SQL Injection",
+      "cwe": "CWE-89",
+      "path": "/api/warehouse/sku",
+      "parameter": "sku",
+      "payload": "' OR '1'='1'-- ",
+      "assertion": "json_array_length_greater_than_1"
+    },
+    {
+      "case_id": "A05",
+      "type": "SQL Injection",
+      "cwe": "CWE-89",
+      "path": "/api/reports/owner",
+      "parameter": "owner",
+      "payload": "' OR '1'='1'-- ",
+      "assertion": "json_array_length_greater_than_1"
+    },
+    {
+      "case_id": "A06",
+      "type": "SQL Injection",
+      "cwe": "CWE-89",
+      "path": "/api/audit/actor",
+      "parameter": "actor",
+      "payload": "' OR '1'='1'-- ",
+      "assertion": "json_array_length_greater_than_1"
+    },
+    {
+      "case_id": "A07",
+      "type": "Cross-Site Scripting",
+      "cwe": "CWE-79",
+      "path": "/ui/search",
+      "parameter": "q",
+      "payload": "</script><script>window.__bench='XSS_PROBE_A07'</script>",
+      "assertion": "body_contains:XSS_PROBE_A07"
+    },
+    {
+      "case_id": "A08",
+      "type": "Cross-Site Scripting",
+      "cwe": "CWE-79",
+      "path": "/ui/feedback/preview",
+      "parameter": "message",
+      "payload": "</script><script>window.__bench='XSS_PROBE_A08'</script>",
+      "assertion": "body_contains:XSS_PROBE_A08"
+    },
+    {
+      "case_id": "A09",
+      "type": "Cross-Site Scripting",
+      "cwe": "CWE-79",
+      "path": "/ui/profile/card",
+      "parameter": "name",
+      "payload": "</script><script>window.__bench='XSS_PROBE_A09'</script>",
+      "assertion": "body_contains:XSS_PROBE_A09"
+    },
+    {
+      "case_id": "A10",
+      "type": "Cross-Site Scripting",
+      "cwe": "CWE-79",
+      "path": "/ui/support/preview",
+      "parameter": "subject",
+      "payload": "</script><script>window.__bench='XSS_PROBE_A10'</script>",
+      "assertion": "body_contains:XSS_PROBE_A10"
+    },
+    {
+      "case_id": "A11",
+      "type": "Cross-Site Scripting",
+      "cwe": "CWE-79",
+      "path": "/ui/campaign/banner",
+      "parameter": "text",
+      "payload": "</script><script>window.__bench='XSS_PROBE_A11'</script>",
+      "assertion": "body_contains:XSS_PROBE_A11"
+    },
+    {
+      "case_id": "A12",
+      "type": "Cross-Site Scripting",
+      "cwe": "CWE-79",
+      "path": "/ui/catalog/suggest",
+      "parameter": "term",
+      "payload": "</script><script>window.__bench='XSS_PROBE_A12'</script>",
+      "assertion": "body_contains:XSS_PROBE_A12"
+    },
+    {
+      "case_id": "A13",
+      "type": "Path Traversal",
+      "cwe": "CWE-22",
+      "path": "/files/download",
+      "parameter": "filename",
+      "payload": "../fixtures/marker.txt",
+      "assertion": "body_contains:TRAVERSAL_PROOF_APP_A"
+    },
+    {
+      "case_id": "A14",
+      "type": "Path Traversal",
+      "cwe": "CWE-22",
+      "path": "/docs/view",
+      "parameter": "doc",
+      "payload": "../fixtures/marker.txt",
+      "assertion": "body_contains:TRAVERSAL_PROOF_APP_A"
+    },
+    {
+      "case_id": "A15",
+      "type": "Path Traversal",
+      "cwe": "CWE-22",
+      "path": "/reports/export",
+      "parameter": "name",
+      "payload": "../fixtures/marker.txt",
+      "assertion": "body_contains:TRAVERSAL_PROOF_APP_A"
+    },
+    {
+      "case_id": "A16",
+      "type": "Path Traversal",
+      "cwe": "CWE-22",
+      "path": "/avatars/load",
+      "parameter": "file",
+      "payload": "../fixtures/marker.txt",
+      "assertion": "body_contains:TRAVERSAL_PROOF_APP_A"
+    },
+    {
+      "case_id": "A17",
+      "type": "Open Redirect",
+      "cwe": "CWE-601",
+      "path": "/auth/continue",
+      "parameter": "next",
+      "payload": "https://example.invalid/benchmark-redirect",
+      "assertion": "302_location_starts_https_example_invalid"
+    },
+    {
+      "case_id": "A18",
+      "type": "Open Redirect",
+      "cwe": "CWE-601",
+      "path": "/links/open",
+      "parameter": "to",
+      "payload": "https://example.invalid/benchmark-redirect",
+      "assertion": "302_location_starts_https_example_invalid"
+    },
+    {
+      "case_id": "A19",
+      "type": "OS Command Injection",
+      "cwe": "CWE-78",
+      "path": "/admin/diagnostics/ping",
+      "parameter": "host",
+      "payload": "127.0.0.1; printf CMD_PROOF_A19",
+      "assertion": "body_contains:CMD_PROOF_A19"
+    },
+    {
+      "case_id": "A20",
+      "type": "OS Command Injection",
+      "cwe": "CWE-78",
+      "path": "/ops/check",
+      "parameter": "host",
+      "payload": "127.0.0.1; printf CMD_PROOF_A20",
+      "assertion": "body_contains:CMD_PROOF_A20"
+    }
+  ]
+}

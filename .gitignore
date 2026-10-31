@@ -31,5 +31,6 @@ __pycache__
 .env*.local
 !.env.example
 
+# Virtual Environment
 venv
 venv312

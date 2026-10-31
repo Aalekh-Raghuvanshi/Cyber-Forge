@@ -1,0 +1,30 @@
+name: sdcbench
+services:
+  app-a:
+    build: ./apps/app_a
+    container_name: sdcbench-app-a
+    ports:
+      - "127.0.0.1:5001:5000"
+    networks: [benchnet]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 128
+    mem_limit: 512m
+  app-b:
+    build: ./apps/app_b
+    container_name: sdcbench-app-b
+    ports:
+      - "127.0.0.1:5002:5000"
+    networks: [benchnet]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 128
+    mem_limit: 512m
+networks:
+  benchnet:
+    name: sdcbench_benchnet
+    internal: true

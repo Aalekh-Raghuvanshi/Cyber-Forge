@@ -206,39 +206,38 @@ async def _execute_full_scan(
 
     # Step 4: Sandboxed LLM Remediation (strictly temperature=0.0 on already correlated issues)
     if request_data.generate_fixes:
-        for issue in correlated_issues:
+        for idx, issue in enumerate(correlated_issues):
             if not issue.fix_suggestion or not issue.fixed_code:
-                if llm:
+                # Set baseline deterministic remediation
+                det_sug, det_code = get_deterministic_remediation(
+                    cwe_id=issue.cwe_id,
+                    vulnerability_type=issue.vulnerability_type,
+                    code_snippet=issue.code_snippet,
+                    payload=issue.payload
+                )
+                issue.fix_suggestion = det_sug
+                issue.fixed_code = det_code
+
+                # For top issues (Confirmed issues or top 5 ranked), query LLM with timeout safeguard
+                if llm and (issue.status_label == "Confirmed" or idx < 5):
                     try:
-                        suggestion, code = await llm.generate_remediation(
-                            cwe_id=issue.cwe_id,
-                            vulnerability_type=issue.vulnerability_type,
-                            file=issue.file,
-                            line=issue.line,
-                            code_snippet=issue.code_snippet,
-                            payload=issue.payload,
-                            evidence=issue.evidence
+                        suggestion, code = await asyncio.wait_for(
+                            llm.generate_remediation(
+                                cwe_id=issue.cwe_id,
+                                vulnerability_type=issue.vulnerability_type,
+                                file=issue.file,
+                                line=issue.line,
+                                code_snippet=issue.code_snippet,
+                                payload=issue.payload,
+                                evidence=issue.evidence
+                            ),
+                            timeout=6.0
                         )
-                        issue.fix_suggestion = suggestion
-                        issue.fixed_code = code
+                        if suggestion and code:
+                            issue.fix_suggestion = suggestion
+                            issue.fixed_code = code
                     except Exception:
-                        suggestion, code = get_deterministic_remediation(
-                            cwe_id=issue.cwe_id,
-                            vulnerability_type=issue.vulnerability_type,
-                            code_snippet=issue.code_snippet,
-                            payload=issue.payload
-                        )
-                        issue.fix_suggestion = suggestion
-                        issue.fixed_code = code
-                else:
-                    suggestion, code = get_deterministic_remediation(
-                        cwe_id=issue.cwe_id,
-                        vulnerability_type=issue.vulnerability_type,
-                        code_snippet=issue.code_snippet,
-                        payload=issue.payload
-                    )
-                    issue.fix_suggestion = suggestion
-                    issue.fixed_code = code
+                        pass
 
     # Step 5: Idempotent SQLite Persistence (FR-6 / FR-10)
     persisted_issues = store.save_scan(
@@ -275,12 +274,28 @@ async def create_scan(request: Request, request_data: FullScanRequest) -> FullSc
 @router.get("/issues", response_model=List[CorrelatedIssue])
 @router.get("/api/issues", response_model=List[CorrelatedIssue])
 async def list_issues(
+    scan_id: Optional[str] = "latest",
     status_label: Optional[str] = None,
     cwe_id: Optional[str] = None
 ) -> List[CorrelatedIssue]:
-    """GET /issues endpoint per FR-9 and FR-10."""
+    """
+    GET /issues endpoint per FR-9 and FR-10.
+    Defaults to the latest scan to isolate results and prevent cross-folder leakage.
+    Pass scan_id="all" to retrieve historical issues across all scans.
+    """
     store = get_issue_store()
-    return store.get_issues(status_label=status_label, cwe_id=cwe_id)
+    effective_scan_id = None if (scan_id and scan_id.lower() == "all") else scan_id
+    return store.get_issues(scan_id=effective_scan_id, status_label=status_label, cwe_id=cwe_id)
+
+
+@router.delete("/issues")
+@router.delete("/api/issues")
+@router.post("/api/issues/clear")
+async def clear_issues():
+    """Clear all persisted scans and issues from the store."""
+    store = get_issue_store()
+    store.clear()
+    return {"success": True, "message": "All scans and issues cleared"}
 
 
 @router.get("/issues/{issue_id}", response_model=CorrelatedIssue)

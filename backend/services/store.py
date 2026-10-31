@@ -188,8 +188,8 @@ class IssueStore:
 
             conn.commit()
 
-        # Re-fetch all current issues sorted strictly per FR-9
-        return self.get_issues()
+        # Re-fetch issues for this specific scan sorted strictly per FR-9
+        return self.get_issues(scan_id=scan_id)
 
     def _row_to_issue(self, row: sqlite3.Row) -> CorrelatedIssue:
         """Helper to convert a SQLite row into a CorrelatedIssue model."""
@@ -229,19 +229,34 @@ class IssueStore:
 
     def get_issues(
         self,
+        scan_id: Optional[str] = None,
         status_label: Optional[str] = None,
         cwe_id: Optional[str] = None
     ) -> List[CorrelatedIssue]:
         """
         Retrieves all issues ordered strictly per FR-9:
         Confirmed (1) -> Runtime only (2) -> Code only (3), then risk_score DESC.
-        Supports optional filtering by status_label and cwe_id.
+        Supports optional filtering by scan_id, status_label, and cwe_id.
         """
         query = """
             SELECT * FROM issues
             WHERE 1=1
         """
         params = []
+
+        if scan_id:
+            clean_scan = scan_id.strip()
+            if clean_scan.lower() == "latest":
+                with self._get_connection() as conn:
+                    c = conn.cursor()
+                    c.execute("SELECT scan_id FROM scans ORDER BY created_at DESC LIMIT 1;")
+                    r = c.fetchone()
+                    if r:
+                        query += " AND scan_id = ?"
+                        params.append(r["scan_id"])
+            else:
+                query += " AND scan_id = ?"
+                params.append(clean_scan)
 
         if status_label:
             query += " AND status_label = ?"

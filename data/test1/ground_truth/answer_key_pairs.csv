@@ -1,0 +1,41 @@
+app,case_id,title,type,cwe,severity,file,line,route_line,method,path,parameter
+app_a,A01,SQL injection in product_search,SQL Injection,CWE-89,high,apps/app_a/app.py,84,80,GET,/api/catalog/search,term
+app_a,A02,SQL injection in customer_lookup,SQL Injection,CWE-89,high,apps/app_a/app.py,92,88,GET,/api/customers/lookup,email
+app_a,A03,SQL injection in order_status,SQL Injection,CWE-89,high,apps/app_a/app.py,100,96,GET,/api/orders/status,status
+app_a,A04,SQL injection in inventory_sku,SQL Injection,CWE-89,high,apps/app_a/app.py,108,104,GET,/api/warehouse/sku,sku
+app_a,A05,SQL injection in report_owner,SQL Injection,CWE-89,high,apps/app_a/app.py,116,112,GET,/api/reports/owner,owner
+app_a,A06,SQL injection in audit_actor,SQL Injection,CWE-89,high,apps/app_a/app.py,124,120,GET,/api/audit/actor,actor
+app_a,A07,Reflected XSS in search_reflection,Cross-Site Scripting,CWE-79,high,apps/app_a/app.py,131,128,GET,/ui/search,q
+app_a,A08,Reflected XSS in feedback_preview,Cross-Site Scripting,CWE-79,high,apps/app_a/app.py,136,133,GET,/ui/feedback/preview,message
+app_a,A09,Reflected XSS in profile_card,Cross-Site Scripting,CWE-79,high,apps/app_a/app.py,141,138,GET,/ui/profile/card,name
+app_a,A10,Reflected XSS in ticket_preview,Cross-Site Scripting,CWE-79,high,apps/app_a/app.py,146,143,GET,/ui/support/preview,subject
+app_a,A11,Reflected XSS in campaign_banner,Cross-Site Scripting,CWE-79,high,apps/app_a/app.py,151,148,GET,/ui/campaign/banner,text
+app_a,A12,Reflected XSS in catalog_suggest,Cross-Site Scripting,CWE-79,high,apps/app_a/app.py,156,153,GET,/ui/catalog/suggest,term
+app_a,A13,Path traversal in file_download,Path Traversal,CWE-22,high,apps/app_a/app.py,161,158,GET,/files/download,filename
+app_a,A14,Path traversal in document_view,Path Traversal,CWE-22,high,apps/app_a/app.py,167,164,GET,/docs/view,doc
+app_a,A15,Path traversal in report_export,Path Traversal,CWE-22,high,apps/app_a/app.py,173,170,GET,/reports/export,name
+app_a,A16,Path traversal in avatar_load,Path Traversal,CWE-22,high,apps/app_a/app.py,179,176,GET,/avatars/load,file
+app_a,A17,Unvalidated redirect in auth_continue,Open Redirect,CWE-601,medium,apps/app_a/app.py,184,182,GET,/auth/continue,next
+app_a,A18,Unvalidated redirect in external_link,Open Redirect,CWE-601,medium,apps/app_a/app.py,188,186,GET,/links/open,to
+app_a,A19,OS command injection in diagnostic_ping,OS Command Injection,CWE-78,critical,apps/app_a/app.py,193,190,GET,/admin/diagnostics/ping,host
+app_a,A20,OS command injection in ops_check,OS Command Injection,CWE-78,critical,apps/app_a/app.py,199,196,GET,/ops/check,host
+app_b,B01,SQL injection in store_filter,SQL Injection,CWE-89,high,apps/app_b/app.py,84,80,GET,/v2/store/filter,keyword
+app_b,B02,SQL injection in account_by_handle,SQL Injection,CWE-89,high,apps/app_b/app.py,92,88,GET,/v2/accounts/by-handle,handle
+app_b,B03,SQL injection in shipment_by_state,SQL Injection,CWE-89,high,apps/app_b/app.py,100,96,GET,/v2/shipment/state,state
+app_b,B04,SQL injection in coupon_lookup,SQL Injection,CWE-89,high,apps/app_b/app.py,108,104,GET,/v2/coupons/lookup,code
+app_b,B05,SQL injection in billing_by_customer,SQL Injection,CWE-89,high,apps/app_b/app.py,116,112,GET,/v2/billing/by-customer,customer
+app_b,B06,SQL injection in event_by_actor,SQL Injection,CWE-89,high,apps/app_b/app.py,124,120,GET,/v2/events/by-actor,actor
+app_b,B07,Reflected XSS in ui_global_search,Cross-Site Scripting,CWE-79,high,apps/app_b/app.py,131,128,GET,/v2/ui/global-search,query
+app_b,B08,Reflected XSS in review_body_preview,Cross-Site Scripting,CWE-79,high,apps/app_b/app.py,136,133,GET,/v2/ui/review/preview,body
+app_b,B09,Reflected XSS in member_badge,Cross-Site Scripting,CWE-79,high,apps/app_b/app.py,141,138,GET,/v2/ui/member/badge,label
+app_b,B10,Reflected XSS in help_subject,Cross-Site Scripting,CWE-79,high,apps/app_b/app.py,146,143,GET,/v2/ui/help/subject,title
+app_b,B11,Reflected XSS in promo_caption,Cross-Site Scripting,CWE-79,high,apps/app_b/app.py,151,148,GET,/v2/ui/promo/caption,caption
+app_b,B12,Reflected XSS in autocomplete,Cross-Site Scripting,CWE-79,high,apps/app_b/app.py,156,153,GET,/v2/ui/autocomplete,q
+app_b,B13,Path traversal in asset_fetch,Path Traversal,CWE-22,high,apps/app_b/app.py,161,158,GET,/v2/assets/fetch,path
+app_b,B14,Path traversal in archive_open,Path Traversal,CWE-22,high,apps/app_b/app.py,167,164,GET,/v2/archive/open,entry
+app_b,B15,Path traversal in invoice_render,Path Traversal,CWE-22,high,apps/app_b/app.py,173,170,GET,/v2/invoice/render,file
+app_b,B16,Path traversal in media_load,Path Traversal,CWE-22,high,apps/app_b/app.py,179,176,GET,/v2/media/load,asset
+app_b,B17,Unvalidated redirect in login_finish,Open Redirect,CWE-601,medium,apps/app_b/app.py,184,182,GET,/v2/login/finish,return_to
+app_b,B18,Unvalidated redirect in navigate_external,Open Redirect,CWE-601,medium,apps/app_b/app.py,188,186,GET,/v2/navigate,target
+app_b,B19,OS command injection in system_trace,OS Command Injection,CWE-78,critical,apps/app_b/app.py,193,190,GET,/v2/system/trace,address
+app_b,B20,OS command injection in maintenance_lookup,OS Command Injection,CWE-78,critical,apps/app_b/app.py,199,196,GET,/v2/maintenance/lookup,node

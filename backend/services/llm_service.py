@@ -5,6 +5,7 @@ Includes Phase 3 sandboxed remediation generator (temperature=0.0) with determin
 """
 
 import json
+import asyncio
 import httpx
 from typing import Optional, Tuple, Dict, Any
 
@@ -149,7 +150,8 @@ class LLMService:
 
         try:
             if self.mode == "groq":
-                response = self.client.chat.completions.create(
+                response = await asyncio.to_thread(
+                    self.client.chat.completions.create,
                     model=self.model,
                     messages=[
                         {
@@ -208,7 +210,8 @@ class LLMService:
     async def _analyze_groq(self, prompt: str) -> dict:
         """Analyze using Groq API."""
         try:
-            response = self.client.chat.completions.create(
+            response = await asyncio.to_thread(
+                self.client.chat.completions.create,
                 model=self.model,
                 messages=[
                     {
