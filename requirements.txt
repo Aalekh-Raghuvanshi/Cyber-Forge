@@ -6,3 +6,5 @@ python-dotenv==1.0.1
 pydantic==2.6.0
 httpx==0.26.0
 python-multipart==0.0.9
+slowapi>=0.1.9
+semgrep>=1.0.0
