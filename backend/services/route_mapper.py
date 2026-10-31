@@ -1,14 +1,14 @@
 """
 AST Route Mapper Service.
 Fulfills FR-4: Static Route Map Extractor.
-Extracts HTTP endpoints, handler functions, and line ranges from Python (FastAPI/Flask)
+Extracts HTTP endpoints, handler functions, and line ranges from Python (FastAPI/Flask/Django)
 and Node.js/Express, and maps them to SAST findings.
 """
 
 import ast
 import os
 import re
-from typing import List, Optional, Dict, Tuple
+from typing import List, Optional, Dict, Tuple, Any, Set
 from backend.models.schemas import RouteEntry, UnifiedFinding
 from backend.utils.logger import get_logger
 
@@ -16,13 +16,152 @@ logger = get_logger("route_mapper")
 
 
 def normalize_file_path(path: str) -> str:
-    """Standardizes relative file path representations."""
+    """Standardizes relative file path representations without stripping directory structure."""
     if not path:
         return ""
     norm = os.path.normpath(path).replace("\\", "/")
     if norm.startswith("./"):
         norm = norm[2:]
     return norm
+
+
+def normalize_django_pattern(raw_pattern: str) -> str:
+    """
+    Converts Django path() or re_path() pattern to a standardized URL template.
+    Examples:
+      'admin/<int:id>/update/' -> '/admin/{id}/update'
+      'users/<user_id>/' -> '/users/{user_id}'
+      r'^users/(?P<user_id>\d+)/$' -> '/users/{user_id}'
+      r'^orders/(?P<order_id>[0-9]+)/items/(?P<item_id>[0-9]+)/$' -> '/orders/{order_id}/items/{item_id}'
+    """
+    if not raw_pattern:
+        return "/"
+
+    p = raw_pattern.strip()
+    # Strip regex anchors ^ and $
+    if p.startswith("^"):
+        p = p[1:]
+    if p.endswith("$"):
+        p = p[:-1]
+
+    # Convert named regex groups (?P<var_name>[^/]+) -> {var_name}
+    p = re.sub(r'\(\?P<([a-zA-Z_][a-zA-Z0-9_]*)>[^\)]+\)', r'{\1}', p)
+
+    # Convert unnamed regex groups (\d+) or ([0-9]+) -> {param}
+    p = re.sub(r'\([^\)]+\)', '{param}', p)
+
+    # Convert Django path converter syntax: <int:id> or <slug:article_name> or <id> -> {id}
+    p = re.sub(r'<(?:[a-zA-Z_][a-zA-Z0-9_]*:)?([a-zA-Z_][a-zA-Z0-9_]*)>', r'{\1}', p)
+
+    # Clean up redundant slashes
+    p = re.sub(r'/+', '/', p)
+
+    # Ensure leading slash
+    if not p.startswith("/") and p:
+        p = f"/{p}"
+
+    # Strip trailing slash if length > 1
+    if len(p) > 1 and p.endswith("/"):
+        p = p[:-1]
+
+    return p or "/"
+
+
+def normalize_route_path(path: str) -> str:
+    """Normalizes URL path for route matching."""
+    if not path:
+        return "/"
+    p = path.strip()
+    # Remove query string if any
+    if "?" in p:
+        p = p.split("?")[0]
+    # Remove redundant slashes
+    p = re.sub(r'/+', '/', p)
+    if not p.startswith("/") and p:
+        p = f"/{p}"
+    if len(p) > 1 and p.endswith("/"):
+        p = p[:-1]
+    return p or "/"
+
+
+def match_url_to_route(dast_url_path: str, routes: List[RouteEntry]) -> List[RouteEntry]:
+    """
+    Matches a runtime DAST URL path against static RouteEntry patterns.
+    Supports exact matching and parameterized templates (e.g. /admin/{id}/update matches /admin/42/update/).
+    """
+    if not dast_url_path or not routes:
+        return []
+
+    norm_dast = normalize_route_path(dast_url_path)
+    dast_segments = [s for s in norm_dast.strip("/").split("/") if s]
+
+    matches: List[RouteEntry] = []
+
+    for route in routes:
+        norm_route = normalize_route_path(route.url_path)
+
+        # 1. Exact match
+        if norm_dast.lower() == norm_route.lower():
+            matches.append(route)
+            continue
+
+        # 2. Parameterized segment match
+        route_segments = [s for s in norm_route.strip("/").split("/") if s]
+        if len(dast_segments) == len(route_segments):
+            matched = True
+            for d_seg, r_seg in zip(dast_segments, route_segments):
+                is_param = (
+                    (r_seg.startswith("{") and r_seg.endswith("}")) or
+                    (r_seg.startswith("<") and r_seg.endswith(">")) or
+                    r_seg.startswith(":")
+                )
+                if is_param:
+                    continue
+                if d_seg.lower() != r_seg.lower():
+                    matched = False
+                    break
+            if matched:
+                matches.append(route)
+
+    return matches
+
+
+class PythonFunctionIndexer(ast.NodeVisitor):
+    """Indexes all function and async function definitions in a Python AST."""
+
+    def __init__(self, file_path: str):
+        self.file_path = normalize_file_path(file_path)
+        self.functions: List[Dict[str, Any]] = []
+
+    def _index_func(self, node: ast.AST):
+        name = getattr(node, "name", "anonymous")
+        start_line = node.lineno
+        end_line = getattr(node, "end_lineno", node.lineno)
+
+        # Check if function takes 'request' or 'req' as first argument (Django view signature)
+        takes_request = False
+        args = getattr(node, "args", None)
+        if args and args.args:
+            first_arg = args.args[0].arg
+            if first_arg in ("request", "req"):
+                takes_request = True
+
+        self.functions.append({
+            "name": name,
+            "file": self.file_path,
+            "start_line": start_line,
+            "end_line": end_line,
+            "takes_request": takes_request,
+            "node": node
+        })
+
+    def visit_FunctionDef(self, node: ast.FunctionDef):
+        self._index_func(node)
+        self.generic_visit(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef):
+        self._index_func(node)
+        self.generic_visit(node)
 
 
 class PythonRouteExtractor(ast.NodeVisitor):
@@ -45,13 +184,12 @@ class PythonRouteExtractor(ast.NodeVisitor):
                 func_name = call.func.attr
 
             if func_name in ("APIRouter", "Blueprint"):
-                # Look for prefix / url_prefix keyword
                 prefix_val = None
                 for kw in call.keywords:
                     if kw.arg in ("prefix", "url_prefix"):
                         if isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
                             prefix_val = kw.value.value
-                        elif isinstance(kw.value, ast.Str):  # Python <3.8 compatibility
+                        elif isinstance(kw.value, ast.Str):
                             prefix_val = kw.value.s
 
                 if prefix_val:
@@ -78,7 +216,6 @@ class PythonRouteExtractor(ast.NodeVisitor):
             return [lower_attr.upper()]
 
         if lower_attr in ("route", "api_route"):
-            # Check methods=['GET', 'POST']
             for kw in decorator.keywords:
                 if kw.arg == "methods":
                     if isinstance(kw.value, (ast.List, ast.Tuple, ast.Set)):
@@ -89,7 +226,6 @@ class PythonRouteExtractor(ast.NodeVisitor):
                                 methods.append(val.upper())
                         if methods:
                             return methods
-            # Flask default for @app.route is GET
             return ["GET"]
 
         return ["GET"]
@@ -128,7 +264,6 @@ class PythonRouteExtractor(ast.NodeVisitor):
             }
 
             if attr_name.lower() in supported_attrs:
-                # Extract path from first argument or 'path' / 'rule' keyword
                 path_str = None
                 if call.args:
                     path_str = self._extract_string_value(call.args[0])
@@ -142,7 +277,6 @@ class PythonRouteExtractor(ast.NodeVisitor):
                     prefix = self.prefixes.get(receiver_name, "")
                     full_path = self._combine_prefix_and_path(prefix, path_str)
 
-                    # Start line is the first decorator line
                     start_line = decorator.lineno
                     if node.decorator_list:
                         start_line = min(d.lineno for d in node.decorator_list)
@@ -174,16 +308,155 @@ class PythonRouteExtractor(ast.NodeVisitor):
         self.generic_visit(node)
 
 
+class DjangoUrlExtractor(ast.NodeVisitor):
+    """
+    Parses Django urls.py AST for urlpatterns assignments containing
+    path(), re_path(), or url() calls.
+    """
+
+    def __init__(self, file_path: str, function_index: Dict[str, List[Dict[str, Any]]]):
+        self.file_path = normalize_file_path(file_path)
+        self.function_index = function_index
+        self.routes: List[RouteEntry] = []
+
+    def _extract_str(self, node: ast.AST) -> Optional[str]:
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return node.value
+        elif isinstance(node, ast.Str):
+            return node.s
+        return None
+
+    def _extract_target_handler(self, node: ast.AST) -> Optional[str]:
+        """Extracts the view function or class name from the second argument of path/re_path."""
+        if isinstance(node, ast.Attribute):
+            return node.attr
+        elif isinstance(node, ast.Name):
+            return node.id
+        elif isinstance(node, ast.Call):
+            # E.g. MyView.as_view()
+            if isinstance(node.func, ast.Attribute) and node.func.attr == "as_view":
+                if isinstance(node.func.value, ast.Name):
+                    return node.func.value.id
+                elif isinstance(node.func.value, ast.Attribute):
+                    return node.func.value.attr
+            elif isinstance(node.func, ast.Name):
+                return node.func.id
+        elif isinstance(node, (ast.Constant, ast.Str)):
+            val = self._extract_str(node)
+            if val:
+                return val.split(".")[-1]
+        return None
+
+    def visit_Assign(self, node: ast.Assign):
+        """Detects urlpatterns = [...]"""
+        is_urlpatterns = False
+        for target in node.targets:
+            if isinstance(target, ast.Name) and target.id == "urlpatterns":
+                is_urlpatterns = True
+                break
+
+        if is_urlpatterns and isinstance(node.value, (ast.List, ast.Tuple)):
+            for elt in node.value.elts:
+                self._process_url_entry(elt)
+
+        self.generic_visit(node)
+
+    def _process_url_entry(self, node: ast.AST):
+        if not isinstance(node, ast.Call):
+            return
+
+        call_name = ""
+        if isinstance(node.func, ast.Name):
+            call_name = node.func.id
+        elif isinstance(node.func, ast.Attribute):
+            call_name = node.func.attr
+
+        if call_name in ("path", "re_path", "url") and len(node.args) >= 2:
+            pattern_str = self._extract_str(node.args[0])
+            if pattern_str is None:
+                pattern_str = ""
+
+            handler_name = self._extract_target_handler(node.args[1])
+            if not handler_name:
+                handler_name = "view_handler"
+
+            normalized_url = normalize_django_pattern(pattern_str)
+            methods = ["GET", "POST", "PUT", "DELETE", "PATCH"]
+
+            # Resolve view function location from index
+            target_file = self.file_path
+            start_line = node.lineno
+            end_line = getattr(node, "end_lineno", node.lineno)
+
+            candidates = self.function_index.get(handler_name, [])
+            if candidates:
+                # Prefer functions that take 'request'
+                preferred = next((c for c in candidates if c["takes_request"]), candidates[0])
+                target_file = preferred["file"]
+                start_line = preferred["start_line"]
+                end_line = preferred["end_line"]
+
+            display = f"ANY {normalized_url} -> {handler_name}(), {target_file} lines {start_line} to {end_line}"
+
+            self.routes.append(
+                RouteEntry(
+                    http_method=methods,
+                    url_path=normalized_url,
+                    handler_function=handler_name,
+                    file=target_file,
+                    start_line=start_line,
+                    end_line=end_line,
+                    display=display
+                )
+            )
+
+
 def extract_routes_from_python_code(code: str, file_path: str = "") -> List[RouteEntry]:
     """Parse Python source code AST and return all detected route endpoints."""
+    norm_path = normalize_file_path(file_path)
     try:
         tree = ast.parse(code)
-        extractor = PythonRouteExtractor(code, file_path)
-        extractor.visit(tree)
-        return extractor.routes
     except Exception as e:
         logger.warning(f"Failed to parse AST for {file_path}: {e}")
         return []
+
+    # 1. Flask & FastAPI Decorator Extraction
+    extractor = PythonRouteExtractor(code, norm_path)
+    extractor.visit(tree)
+    if extractor.routes:
+        return extractor.routes
+
+    # 2. Django urls.py Extraction
+    indexer = PythonFunctionIndexer(norm_path)
+    indexer.visit(tree)
+    fn_map = {fn["name"]: [fn] for fn in indexer.functions}
+
+    django_extractor = DjangoUrlExtractor(norm_path, fn_map)
+    django_extractor.visit(tree)
+    if django_extractor.routes:
+        return django_extractor.routes
+
+    # 3. Standalone View Function Fallback (def fn(request, ...): -> /{fn_name})
+    fallback_routes: List[RouteEntry] = []
+    for fn in indexer.functions:
+        if fn["takes_request"]:
+            fn_name = fn["name"]
+            url_path = f"/{fn_name}"
+            methods = ["GET", "POST", "PUT", "DELETE", "PATCH"]
+            display = f"ANY {url_path} -> {fn_name}(), {norm_path} lines {fn['start_line']} to {fn['end_line']}"
+            fallback_routes.append(
+                RouteEntry(
+                    http_method=methods,
+                    url_path=url_path,
+                    handler_function=fn_name,
+                    file=norm_path,
+                    start_line=fn["start_line"],
+                    end_line=fn["end_line"],
+                    display=display
+                )
+            )
+
+    return fallback_routes
 
 
 def extract_routes_from_js_code(code: str, file_path: str = "") -> List[RouteEntry]:
@@ -209,10 +482,8 @@ def extract_routes_from_js_code(code: str, file_path: str = "") -> List[RouteEnt
             if not url_path.startswith("/"):
                 url_path = f"/{url_path}"
 
-            # Handler name heuristic
             handler_name = match.group(3) or match.group(5) or "anonymous_handler"
 
-            # Determine approximate end line by bracket balancing or small block
             start_line = i
             end_line = i
             brace_count = 0
@@ -245,7 +516,7 @@ def extract_routes_from_js_code(code: str, file_path: str = "") -> List[RouteEnt
 
 
 def extract_routes_from_file(file_path: str, base_dir: Optional[str] = None) -> List[RouteEntry]:
-    """Extract routes from a single file path."""
+    """Extract routes from a single file path, preserving relative file paths."""
     if not os.path.exists(file_path) or not os.path.isfile(file_path):
         return []
 
@@ -273,7 +544,8 @@ def extract_routes_from_file(file_path: str, base_dir: Optional[str] = None) -> 
 
 def extract_routes_from_folder(folder_path: str) -> List[RouteEntry]:
     """
-    Recursively scans folder and extracts all API routes.
+    Recursively scans folder and extracts all API routes across Flask, FastAPI,
+    Express, and Django (including urls.py -> views.py resolution and standalone views).
     Ignores git, virtualenvs, cache, and vendor directories.
     """
     routes: List[RouteEntry] = []
@@ -285,15 +557,92 @@ def extract_routes_from_folder(folder_path: str) -> List[RouteEntry]:
         "env", "dist", "build", ".next", ".pytest_cache"
     }
 
+    # Step A: Collect all Python and JS files
+    py_files: List[Tuple[str, str]] = []  # (full_path, rel_path)
+    js_files: List[Tuple[str, str]] = []
+
     for root, dirs, files in os.walk(folder_path):
         dirs[:] = [d for d in dirs if d not in skip_dirs and not d.startswith(".")]
 
         for file in files:
             ext = os.path.splitext(file)[1].lower()
-            if ext in (".py", ".js", ".ts", ".mjs"):
-                full_path = os.path.join(root, file)
-                file_routes = extract_routes_from_file(full_path, base_dir=folder_path)
-                routes.extend(file_routes)
+            full_path = os.path.join(root, file)
+            try:
+                rel_path = os.path.relpath(full_path, folder_path)
+            except Exception:
+                rel_path = full_path
+            rel_path = normalize_file_path(rel_path)
+
+            if ext == ".py":
+                py_files.append((full_path, rel_path))
+            elif ext in (".js", ".ts", ".mjs"):
+                js_files.append((full_path, rel_path))
+
+    # Step B: Index all Python functions across repository for Django view resolution
+    functions_by_name: Dict[str, List[Dict[str, Any]]] = {}
+    py_ast_cache: Dict[str, Tuple[ast.AST, str]] = {}
+
+    for full_path, rel_path in py_files:
+        try:
+            with open(full_path, "r", encoding="utf-8", errors="replace") as f:
+                code = f.read()
+            tree = ast.parse(code)
+            py_ast_cache[rel_path] = (tree, code)
+
+            indexer = PythonFunctionIndexer(rel_path)
+            indexer.visit(tree)
+            for fn in indexer.functions:
+                functions_by_name.setdefault(fn["name"], []).append(fn)
+        except Exception:
+            continue
+
+    # Step C: Parse Python routes (Flask / FastAPI / Django)
+    mapped_views: Set[Tuple[str, str]] = set()  # (file, handler_name)
+
+    for rel_path, (tree, code) in py_ast_cache.items():
+        # Check Flask / FastAPI decorators
+        extractor = PythonRouteExtractor(code, rel_path)
+        extractor.visit(tree)
+        for r in extractor.routes:
+            routes.append(r)
+            mapped_views.add((r.file, r.handler_function))
+
+        # Check Django urls.py
+        django_extractor = DjangoUrlExtractor(rel_path, functions_by_name)
+        django_extractor.visit(tree)
+        for r in django_extractor.routes:
+            routes.append(r)
+            mapped_views.add((r.file, r.handler_function))
+
+    # Step D: Standalone View File Fallback
+    # If any view function taking 'request' is not mapped to a route, register fallback /{fn_name}
+    for fn_name, fn_list in functions_by_name.items():
+        for fn in fn_list:
+            if fn["takes_request"] and (fn["file"], fn["name"]) not in mapped_views:
+                url_path = f"/{fn['name']}"
+                methods = ["GET", "POST", "PUT", "DELETE", "PATCH"]
+                display = f"ANY {url_path} -> {fn['name']}(), {fn['file']} lines {fn['start_line']} to {fn['end_line']}"
+                routes.append(
+                    RouteEntry(
+                        http_method=methods,
+                        url_path=url_path,
+                        handler_function=fn["name"],
+                        file=fn["file"],
+                        start_line=fn["start_line"],
+                        end_line=fn["end_line"],
+                        display=display
+                    )
+                )
+                mapped_views.add((fn["file"], fn["name"]))
+
+    # Step E: Parse JS routes
+    for full_path, rel_path in js_files:
+        try:
+            with open(full_path, "r", encoding="utf-8", errors="replace") as f:
+                js_code = f.read()
+            routes.extend(extract_routes_from_js_code(js_code, rel_path))
+        except Exception:
+            continue
 
     # Sort routes by file, start_line
     routes.sort(key=lambda r: (r.file, r.start_line))
@@ -348,4 +697,5 @@ def enrich_finding_with_route(finding: UnifiedFinding, routes: List[RouteEntry])
         finding.url_path = matched.url_path
         finding.http_method = matched.http_method[0] if matched.http_method else "GET"
         finding.handler_function = matched.handler_function
+        finding.matched_route = matched.display
     return finding

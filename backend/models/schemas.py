@@ -62,6 +62,8 @@ class UnifiedFinding(BaseModel):
     description: Optional[str] = Field(default=None, description="Detailed vulnerability description")
     fix_suggestion: Optional[str] = Field(default=None, description="Recommended remediation steps")
     fixed_code: Optional[str] = Field(default=None, description="Example secure code replacement")
+    matched_route: Optional[str] = Field(default=None, description="Enclosing route display string")
+    merged_count: int = Field(default=1, description="Number of duplicate raw findings merged into this item")
 
 
 class CorrelatedIssue(BaseModel):

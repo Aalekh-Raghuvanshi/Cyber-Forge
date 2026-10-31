@@ -26,6 +26,36 @@ const DEFAULT_DEMO_ALERTS = [
   }
 ]
 
+const PYGOAT_DEMO_ALERTS = [
+  {
+    alert: 'Remote OS Command Injection',
+    url: 'http://localhost:5000/lab1',
+    method: 'POST',
+    param: 'domain',
+    attack: '; id',
+    evidence: 'uid=0(root) gid=0(root)',
+    cweid: '78'
+  },
+  {
+    alert: 'Code Injection',
+    url: 'http://localhost:5000/lab2',
+    method: 'POST',
+    param: 'val',
+    attack: '__import__("os").system("id")',
+    evidence: '0',
+    cweid: '94'
+  },
+  {
+    alert: 'SQL Injection',
+    url: 'http://localhost:5000/lab',
+    method: 'POST',
+    param: 'username',
+    attack: "admin' OR '1'='1",
+    evidence: 'syntax error',
+    cweid: '89'
+  }
+]
+
 const Dashboard = () => {
   // Config & Health State
   const [config, setConfig] = useState(null)
@@ -93,10 +123,11 @@ const Dashboard = () => {
       const stepTimer3 = setTimeout(() => setScanStep('Correlating SAST line numbers with DAST endpoints...'), 2400)
       const stepTimer4 = setTimeout(() => setScanStep('Generating Sandboxed LLM Remediation (temp=0.0)...'), 3200)
 
+      const demoAlertsToUse = folder.toLowerCase().includes('pygoat') ? PYGOAT_DEMO_ALERTS : DEFAULT_DEMO_ALERTS
       const payload = {
         source_folder: folder,
         target_url: targetUrl.trim() || undefined,
-        raw_zap_alerts: useAlerts ? DEFAULT_DEMO_ALERTS : undefined,
+        raw_zap_alerts: useAlerts ? demoAlertsToUse : undefined,
         generate_fixes: true
       }
 
@@ -269,7 +300,9 @@ const Dashboard = () => {
               onChange={(e) => setIncludeDemoAlerts(e.target.checked)}
               className="rounded text-blue-600 focus:ring-0"
             />
-            <span>Include demo OWASP ZAP alerts for correlation (`/api/orders` SQLi & `/api/search` XSS)</span>
+            <span>
+              Include demo OWASP ZAP alerts for correlation ({targetDir.toLowerCase().includes('pygoat') ? '`/lab1` Cmd Injection, `/lab2` Code Injection, `/lab` SQLi' : '`/api/orders` SQLi & `/api/search` XSS'})
+            </span>
           </label>
 
           <div className="flex items-center gap-2">
@@ -378,6 +411,29 @@ const Dashboard = () => {
             <div className="text-[11px] font-medium text-gray-500">AST Route Map</div>
             <div className="text-2xl font-bold text-gray-800 mt-1">{scanData.route_map?.length || 0}</div>
             <div className="text-[11px] text-gray-500 mt-0.5">{showRoutes ? 'Click to hide' : 'Click to view'}</div>
+          </div>
+        </div>
+      )}
+
+      {/* DAST Target Offline Notice */}
+      {scanData && scanData.confirmed_count === 0 && scanData.runtime_only_count === 0 && targetUrl && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6 text-xs text-amber-900 flex items-start gap-3">
+          <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-semibold text-amber-950">
+              DAST Runtime Server Offline ({targetUrl})
+            </p>
+            <p className="text-amber-800 leading-relaxed">
+              SAST successfully extracted <strong>{scanData.code_only_count} static code vulnerabilities</strong> across <strong>{scanData.route_map?.length || 0} AST routes</strong>.
+              However, the live DAST URL <code className="bg-amber-100/80 px-1 py-0.5 rounded font-mono text-[11px] text-amber-900">{targetUrl}</code> was unreachable (no active server listening).
+            </p>
+            <p className="text-amber-800 leading-relaxed">
+              Cyber-Forge strictly enforces a <strong>Zero-Mock Policy</strong> (it will never invent fake runtime alerts for unreachable servers). To view confirmed correlations:
+            </p>
+            <ul className="list-disc list-inside text-amber-800 pl-1 space-y-0.5 text-[11px]">
+              <li>Check the <strong>&quot;Include demo OWASP ZAP alerts for correlation&quot;</strong> box above to simulate active runtime alerts for {targetDir.toLowerCase().includes('pygoat') ? 'PyGoat' : 'your target'}, or</li>
+              <li>Launch the target web application locally (e.g. PyGoat) and point the URL to its active port.</li>
+            </ul>
           </div>
         </div>
       )}

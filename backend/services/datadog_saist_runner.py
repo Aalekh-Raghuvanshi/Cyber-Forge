@@ -215,9 +215,18 @@ class DatadogSAISTRunner:
 
                 # Convert validated findings into SARIF results
                 for v in validated:
-                    rule_id = f"datadog-saist/{v.get('cwe_id', 'security-flaw').lower()}"
-                    start_line = v.get("start_line", 1)
-                    end_line = v.get("end_line", start_line)
+                    cwe_raw = v.get("cwe_id") or v.get("cwe") or v.get("canonical_cwe")
+                    if not cwe_raw or cwe_raw in ("security-flaw", "CWE-UNKNOWN"):
+                        norm_c, _, _, _ = normalize_cwe(
+                            raw_cwe=None,
+                            rule_name=v.get("vulnerability_type"),
+                            message=v.get("explanation") or v.get("description")
+                        )
+                        cwe_raw = norm_c
+
+                    rule_id = f"datadog-saist/{cwe_raw.lower()}"
+                    start_line = v.get("start_line") or v.get("line") or v.get("sink_line") or 1
+                    end_line = v.get("end_line") or v.get("sink_line") or start_line
 
                     # Extract snippet from actual file lines
                     snippet_text = ""
@@ -247,8 +256,8 @@ class DatadogSAISTRunner:
                             }
                         ],
                         "properties": {
-                            "tags": [v.get("cwe_id", "CWE-89"), "security", "ai-native"],
-                            "cwe_id": v.get("cwe_id", "CWE-89"),
+                            "tags": [cwe_raw, "security", "ai-native"],
+                            "cwe_id": cwe_raw,
                             "confidence": v.get("confidence", "HIGH"),
                             "vulnerability_type": v.get("vulnerability_type"),
                             "taint_source": v.get("taint_source"),
@@ -601,12 +610,14 @@ class DatadogSAISTRunner:
 
                 # Zero-Hallucination Syntax Guardrail: verify canonical CWE indicators
                 if canonical_cwe == "CWE-89":
+                    # Strip python imports like 'from ... import ...' to avoid false positives on 'from'
+                    cleaned_sql_text = re.sub(r'from\s+[\w\.]+\s+import', '', surrounding_text)
                     sql_keywords = (
-                        "select", "insert", "update", "delete", "drop", "alter", "create",
-                        "truncate", "from", "where", "join", "cursor", "execute", "executemany",
-                        "query", "sql", "raw", "table", "db.", "database", "sqlite", "mysql", "postgres"
+                        "select ", "insert into", "update ", "delete from", "drop table",
+                        "cursor.execute", ".execute(", ".executemany(", ".raw(", "where ",
+                        "sql =", "query =", "query+", "query +", "sqlite3", "psycopg2", "cursor"
                     )
-                    if not any(k in surrounding_text for k in sql_keywords):
+                    if not any(k in cleaned_sql_text for k in sql_keywords):
                         logger.debug(f"Discarding hallucinated SQLi finding without SQL syntax at line {start_line}")
                         continue
                 elif canonical_cwe == "CWE-78":

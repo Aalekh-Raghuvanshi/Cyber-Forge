@@ -1,13 +1,13 @@
 """
 Canonical CWE Normalizer and Classification Engine.
 Fulfills FR-3: One common finding format with canonical CWE numbers,
-supporting Semgrep, AST, and DAST (OWASP ZAP) findings.
+supporting Semgrep, AST, and DAST (OWASP ZAP, Nuclei, SARIF) findings.
 """
 
 import re
 import os
 import hashlib
-from typing import Dict, Any, Tuple, Optional, List, Union
+from typing import Dict, Any, Tuple, Optional, List, Union, Set
 
 
 # ---------------------------------------------------------------------------
@@ -103,6 +103,14 @@ CANONICAL_CWE_METADATA: Dict[str, Dict[str, Any]] = {
         "description": "Information Exposure: The application inadvertently discloses sensitive system, environment, or component information in HTTP headers or responses.",
         "default_remediation": "Suppress server banners, remove debugging tokens, and standardize error responses."
     },
+    "CWE-209": {
+        "cwe_id": "CWE-209",
+        "name": "Sensitive Data Exposure via Debug Mode",
+        "severity": "MEDIUM",
+        "confidence": "HIGH",
+        "description": "Generation of Error Message Containing Sensitive Information: Diagnostic or debug stack trace page exposed.",
+        "default_remediation": "Disable DEBUG mode in production environments and use a custom generic 500 error handler."
+    },
     "CWE-502": {
         "cwe_id": "CWE-502",
         "name": "Insecure Deserialization",
@@ -134,7 +142,82 @@ CANONICAL_CWE_METADATA: Dict[str, Dict[str, Any]] = {
         "confidence": "HIGH",
         "description": "Improper Restriction of XML External Entity Reference",
         "default_remediation": "Disable external entity resolution (DTD/XInclude) in all XML parsers."
+    },
+    "CWE-862": {
+        "cwe_id": "CWE-862",
+        "name": "Broken Access Control / Missing Authorization",
+        "severity": "HIGH",
+        "confidence": "HIGH",
+        "description": "Missing Authorization: The application does not perform authorization checks for functionality access.",
+        "default_remediation": "Implement role-based access control (RBAC) and verify user permissions on all protected routes."
+    },
+    "CWE-639": {
+        "cwe_id": "CWE-639",
+        "name": "Insecure Direct Object Reference (IDOR)",
+        "severity": "HIGH",
+        "confidence": "HIGH",
+        "description": "Authorization Bypass Through User-Controlled Key (IDOR): Access to records granted without verifying object ownership.",
+        "default_remediation": "Validate that the currently authenticated user owns or has explicit permission to access the requested object ID."
+    },
+    "CWE-287": {
+        "cwe_id": "CWE-287",
+        "name": "Improper Authentication / Broken Session",
+        "severity": "HIGH",
+        "confidence": "HIGH",
+        "description": "Improper Authentication: Mechanisms for verifying identity or session credentials are weak or bypassed.",
+        "default_remediation": "Use secure session management libraries, enforce MFA, and protect authentication tokens."
+    },
+    "CWE-204": {
+        "cwe_id": "CWE-204",
+        "name": "Observable Response Discrepancy (Credential Enumeration)",
+        "severity": "MEDIUM",
+        "confidence": "HIGH",
+        "description": "Response discrepancy allows an attacker to enumerate valid usernames or account identifiers.",
+        "default_remediation": "Return uniform authentication failure messages and enforce constant-time credential checks."
+    },
+    "CWE-614": {
+        "cwe_id": "CWE-614",
+        "name": "Insecure Cookie",
+        "severity": "MEDIUM",
+        "confidence": "HIGH",
+        "description": "Sensitive Cookie in HTTPS Session Without 'Secure' or 'HttpOnly' Attribute.",
+        "default_remediation": "Ensure all sensitive and authentication cookies include Secure, HttpOnly, and SameSite attributes."
+    },
+    "CWE-915": {
+        "cwe_id": "CWE-915",
+        "name": "Improperly Controlled Modification of Dynamically-Determined Object Attributes (Mass Assignment)",
+        "severity": "HIGH",
+        "confidence": "HIGH",
+        "description": "Mass Assignment: The software modifies object attributes from user input without restricting writable fields.",
+        "default_remediation": "Use explicit DTOs, schemas, or allowlists for bindable model attributes."
     }
+}
+
+
+# ---------------------------------------------------------------------------
+# Canonical CWE Equivalence Groups
+# ---------------------------------------------------------------------------
+
+CWE_EQUIVALENCE_GROUPS: Dict[str, Set[str]] = {
+    "CWE-89": {"CWE-89", "CWE-564", "CWE-943"},
+    "CWE-79": {"CWE-79", "CWE-80", "CWE-83", "CWE-87"},
+    "CWE-22": {"CWE-22", "CWE-23", "CWE-36", "CWE-73"},
+    "CWE-78": {"CWE-78", "CWE-77", "CWE-88"},
+    "CWE-94": {"CWE-94", "CWE-95", "CWE-96"},
+    "CWE-502": {"CWE-502"},
+    "CWE-601": {"CWE-601"},
+    "CWE-918": {"CWE-918"},
+    "CWE-798": {"CWE-798", "CWE-259", "CWE-321"},
+    "CWE-328": {"CWE-328", "CWE-327", "CWE-329", "CWE-354", "CWE-916"},
+    "CWE-200": {"CWE-200", "CWE-209", "CWE-256", "CWE-312", "CWE-359", "CWE-522"},
+    "CWE-862": {"CWE-862", "CWE-284", "CWE-285", "CWE-306"},
+    "CWE-639": {"CWE-639", "CWE-862", "CWE-284"},
+    "CWE-287": {"CWE-287", "CWE-345", "CWE-384", "CWE-640"},
+    "CWE-204": {"CWE-204", "CWE-203"},
+    "CWE-614": {"CWE-614", "CWE-1004"},
+    "CWE-352": {"CWE-352"},
+    "CWE-915": {"CWE-915"},
+    "CWE-693": {"CWE-693", "CWE-16", "CWE-1032"},
 }
 
 
@@ -147,52 +230,82 @@ CWE_VARIANT_MAP: Dict[str, str] = {
     "CWE-89": "CWE-89",
     "89": "CWE-89",
     "CWE-564": "CWE-89",   # Hibernate SQL injection
+    "564": "CWE-89",
     "CWE-943": "CWE-89",   # Special elements in data query logic
+    "943": "CWE-89",
     "CWE-20": "CWE-89",    # In context of SQL input validation
 
     # XSS variants -> CWE-79
     "CWE-79": "CWE-79",
     "79": "CWE-79",
     "CWE-80": "CWE-79",    # Basic XSS
+    "80": "CWE-79",
     "CWE-81": "CWE-79",
+    "81": "CWE-79",
     "CWE-82": "CWE-79",
+    "82": "CWE-79",
     "CWE-83": "CWE-79",
+    "83": "CWE-79",
     "CWE-84": "CWE-79",
+    "84": "CWE-79",
     "CWE-85": "CWE-79",
+    "85": "CWE-79",
     "CWE-86": "CWE-79",
+    "86": "CWE-79",
     "CWE-87": "CWE-79",
+    "87": "CWE-79",
     "CWE-116": "CWE-79",   # Improper Encoding/Escaping
+    "116": "CWE-79",
 
     # Path Traversal variants -> CWE-22
     "CWE-22": "CWE-22",
     "22": "CWE-22",
     "CWE-23": "CWE-22",    # Relative Path Traversal
+    "23": "CWE-22",
     "CWE-35": "CWE-22",    # Path Traversal: '.../...//'
+    "35": "CWE-22",
     "CWE-36": "CWE-22",    # Absolute Path Traversal
+    "36": "CWE-22",
     "CWE-73": "CWE-22",    # External Control of File Name or Path
+    "73": "CWE-22",
     "CWE-99": "CWE-22",    # Resource Injection
+    "99": "CWE-22",
 
     # Command Injection variants -> CWE-78
     "CWE-78": "CWE-78",
     "78": "CWE-78",
     "CWE-77": "CWE-78",    # Command Injection
+    "77": "CWE-78",
     "CWE-88": "CWE-78",    # Argument Injection
+    "88": "CWE-78",
 
     # Hard-coded Credentials -> CWE-798
     "CWE-798": "CWE-798",
     "798": "CWE-798",
     "CWE-259": "CWE-798",  # Hard-coded Password
+    "259": "CWE-798",
     "CWE-321": "CWE-798",  # Hard-coded Cryptographic Key
+    "321": "CWE-798",
     "CWE-547": "CWE-798",  # Hardcoded Security Constants
+    "547": "CWE-798",
 
     # Weak Hashing / Broken Crypto -> CWE-328
     "CWE-328": "CWE-328",
     "328": "CWE-328",
     "CWE-327": "CWE-328",  # Broken or Risky Crypto Algorithm
+    "327": "CWE-328",
+    "CWE-329": "CWE-328",  # Not Using a Random IV with CBC Mode
+    "329": "CWE-328",
+    "CWE-354": "CWE-328",  # Improper Validation of Integrity Check
+    "354": "CWE-328",
     "CWE-326": "CWE-328",  # Inadequate Encryption Strength
+    "326": "CWE-328",
     "CWE-916": "CWE-328",  # Password Hash with Insufficient Computational Effort
+    "916": "CWE-328",
     "CWE-330": "CWE-328",  # Use of Insufficiently Random Values
+    "330": "CWE-328",
     "CWE-338": "CWE-328",  # Weak PRNG
+    "338": "CWE-328",
 
     # Insecure Deserialization -> CWE-502
     "CWE-502": "CWE-502",
@@ -203,6 +316,9 @@ CWE_VARIANT_MAP: Dict[str, str] = {
     "CWE-94": "CWE-94",
     "94": "CWE-94",
     "CWE-95": "CWE-94",    # Eval Injection
+    "95": "CWE-94",
+    "CWE-96": "CWE-94",    # Static Code Injection
+    "96": "CWE-94",
 
     # SSRF -> CWE-918
     "CWE-918": "CWE-918",
@@ -212,6 +328,42 @@ CWE_VARIANT_MAP: Dict[str, str] = {
     "CWE-601": "CWE-601",
     "601": "CWE-601",
 
+    # Broken Access Control -> CWE-862
+    "CWE-862": "CWE-862",
+    "862": "CWE-862",
+    "CWE-284": "CWE-862",  # Improper Access Control
+    "284": "CWE-862",
+    "CWE-285": "CWE-862",  # Improper Authorization
+    "285": "CWE-862",
+    "CWE-306": "CWE-862",  # Missing Authentication for Critical Function
+    "306": "CWE-862",
+
+    # IDOR -> CWE-639
+    "CWE-639": "CWE-639",
+    "639": "CWE-639",
+
+    # Broken Authentication / Session -> CWE-287
+    "CWE-287": "CWE-287",
+    "287": "CWE-287",
+    "CWE-345": "CWE-287",
+    "345": "CWE-287",
+    "CWE-384": "CWE-287",  # Session Fixation
+    "384": "CWE-287",
+    "CWE-640": "CWE-287",  # Weak Password Recovery Mechanism
+    "640": "CWE-287",
+
+    # Credential Enumeration -> CWE-204
+    "CWE-204": "CWE-204",
+    "204": "CWE-204",
+    "CWE-203": "CWE-204",
+    "203": "CWE-204",
+
+    # Insecure Cookie -> CWE-614
+    "CWE-614": "CWE-614",
+    "614": "CWE-614",
+    "CWE-1004": "CWE-614", # Sensitive Cookie Without 'HttpOnly' Flag
+    "1004": "CWE-614",
+
     # Missing Security Headers / Protection Failure -> CWE-693
     "CWE-693": "CWE-693",
     "693": "CWE-693",
@@ -219,12 +371,10 @@ CWE_VARIANT_MAP: Dict[str, str] = {
     "1021": "CWE-693",
     "CWE-319": "CWE-693",  # Cleartext Transmission (Missing HSTS)
     "319": "CWE-693",
-    "CWE-1004": "CWE-693", # Sensitive Cookie Without 'HttpOnly' Flag
-    "1004": "CWE-693",
-    "CWE-614": "CWE-693",  # Sensitive Cookie Without 'Secure' Flag
-    "614": "CWE-693",
     "CWE-16": "CWE-693",   # Configuration Weakness
     "16": "CWE-693",
+    "CWE-1032": "CWE-693", # Security Misconfiguration
+    "1032": "CWE-693",
     "CWE-942": "CWE-693",  # Permissive CORS Policy
     "942": "CWE-693",
 
@@ -232,13 +382,25 @@ CWE_VARIANT_MAP: Dict[str, str] = {
     "CWE-200": "CWE-200",
     "200": "CWE-200",
     "CWE-209": "CWE-200",  # Generation of Error Message Containing Sensitive Info
-    "209": "CWE-209",
+    "209": "CWE-200",
+    "CWE-256": "CWE-200",  # Plaintext Storage of Password
+    "256": "CWE-200",
+    "CWE-312": "CWE-200",  # Cleartext Storage of Sensitive Information
+    "312": "CWE-200",
+    "CWE-359": "CWE-200",  # Exposure of Private Personal Information
+    "359": "CWE-200",
+    "CWE-522": "CWE-200",  # Insufficiently Protected Credentials
+    "522": "CWE-200",
 
     # CSRF -> CWE-352
     "CWE-352": "CWE-352",
     "352": "CWE-352",
     "CWE-1275": "CWE-352", # Sensitive Cookie Without 'SameSite' Attribute
     "1275": "CWE-352",
+
+    # Mass Assignment -> CWE-915
+    "CWE-915": "CWE-915",
+    "915": "CWE-915",
 
     # XXE -> CWE-611
     "CWE-611": "CWE-611",
@@ -250,7 +412,8 @@ CWE_VARIANT_MAP: Dict[str, str] = {
 # OWASP ZAP Plugin ID to Canonical CWE Mapping
 # ---------------------------------------------------------------------------
 
-ZAP_PLUGIN_MAP: Dict[str, str] = {
+ZAP_PLUGIN_TO_CWE: Dict[str, str] = {
+    # SQL Injection
     "40018": "CWE-89",   # SQL Injection
     "40019": "CWE-89",   # SQL Injection - MySQL
     "40020": "CWE-89",   # SQL Injection - Hypersonic
@@ -258,37 +421,69 @@ ZAP_PLUGIN_MAP: Dict[str, str] = {
     "40022": "CWE-89",   # SQL Injection - PostgreSQL
     "40024": "CWE-89",   # SQL Injection - SQLite
     "40027": "CWE-89",   # SQL Injection - MsSQL
+    "90018": "CWE-89",   # Advanced SQL Injection
+
+    # Cross-Site Scripting (XSS)
     "40012": "CWE-79",   # Reflected XSS
     "40014": "CWE-79",   # Persistent / Stored XSS
     "40016": "CWE-79",   # Persistent XSS - Prime
     "40017": "CWE-79",   # Persistent XSS - Spider
-    "40003": "CWE-79",   # CR-LF Injection
+    "10104": "CWE-79",   # User Controllable HTML Element Attribute (XSS)
+
+    # Path Traversal
     "6": "CWE-22",       # Path Traversal
     "7": "CWE-22",       # Remote File Inclusion
+    "40003": "CWE-22",   # Path Traversal / CR-LF Path Manipulation
+
+    # OS Command Injection
     "90020": "CWE-78",   # Remote OS Command Injection
-    "40028": "CWE-601",  # Open Redirect
+    "90019": "CWE-78",   # Server Side Code Execution / Command Injection
+
+    # Code Injection
+    "90021": "CWE-94",   # XPath / Code Injection
+
+    # XXE
+    "90023": "CWE-611",  # XML External Entity (XXE)
+
+    # Open Redirect
+    "10028": "CWE-601",  # Open Redirect
+    "20019": "CWE-601",  # External Redirect
+    "40028": "CWE-601",  # Open Redirect (Active)
+
+    # SSRF
     "40046": "CWE-918",  # Server-Side Request Forgery (SSRF)
-    "10020": "CWE-693",  # X-Frame-Options Header Missing (Clickjacking)
-    "10035": "CWE-693",  # Strict-Transport-Security Header Not Set (HSTS)
+
+    # Insecure Cookie
+    "10010": "CWE-614",  # Cookie No HttpOnly Flag
+    "10011": "CWE-614",  # Cookie Without Secure Flag
+    "10054": "CWE-614",  # Cookie Without SameSite Attribute
+
+    # CSRF
+    "10202": "CWE-352",  # Absence of Anti-CSRF Tokens
+
+    # Missing Security Headers / Protection Mechanism Failure
     "10038": "CWE-693",  # Content Security Policy (CSP) Header Not Set
+    "10020": "CWE-693",  # X-Frame-Options Header Missing (Clickjacking)
+    "10021": "CWE-693",  # X-Content-Type-Options Header Missing
+    "10035": "CWE-693",  # Strict-Transport-Security Header Not Set (HSTS)
+    "10098": "CWE-693",  # Cross-Domain Misconfiguration
     "10049": "CWE-693",  # Content-Security-Policy (CSP) Missing
     "10055": "CWE-693",  # CSP: Wildcard Directive
-    "10021": "CWE-693",  # X-Content-Type-Options Header Missing
     "10016": "CWE-693",  # Web Browser XSS Protection Not Enabled
-    "10010": "CWE-693",  # Cookie No HttpOnly Flag
-    "10011": "CWE-693",  # Cookie Without Secure Flag
-    "10054": "CWE-352",  # Cookie Without SameSite Attribute
     "10017": "CWE-693",  # Cross-Domain Misconfiguration
+
+    # Sensitive Data Exposure / Error Messages
+    "90022": "CWE-209",  # Application Error Disclosure / Debug Information Leak
+    "10056": "CWE-209",  # X-Debug-Token Information Leak
     "10096": "CWE-200",  # Timestamp Disclosure
     "10027": "CWE-200",  # Information Disclosure - Suspicious Comments
     "10037": "CWE-200",  # Server Leaks Information via "Server" Header
-    "10056": "CWE-200",  # X-Debug-Token Information Leak
     "2": "CWE-200",      # Private IP Disclosure
-    "3": "CWE-384",      # Session ID in URL Rewrite
-    "90019": "CWE-78",   # Server Side Code Injection
-    "90021": "CWE-94",   # XPath Injection
-    "90023": "CWE-611",  # XML External Entity (XXE)
+    "3": "CWE-287",      # Session ID in URL Rewrite
 }
+
+# Alias for backwards compatibility
+ZAP_PLUGIN_MAP = ZAP_PLUGIN_TO_CWE
 
 
 # ---------------------------------------------------------------------------
@@ -310,6 +505,13 @@ KEYWORD_TO_CANONICAL_CWE: List[Tuple[re.Pattern, str]] = [
     (re.compile(r'(information[_-]?disclosure|information[_-]?exposure|server[_-]?header|timestamp[_-]?disclosure)', re.IGNORECASE), "CWE-200"),
     (re.compile(r'(csrf|cross[_-]?site[_-]?request)', re.IGNORECASE), "CWE-352"),
     (re.compile(r'(xxe|xml[_-]?external[_-]?entity)', re.IGNORECASE), "CWE-611"),
+    (re.compile(r'(broken[_-]?access|missing[_-]?auth|unauthorized|rbac)', re.IGNORECASE), "CWE-862"),
+    (re.compile(r'(idor|insecure[_-]?direct[_-]?object)', re.IGNORECASE), "CWE-639"),
+    (re.compile(r'(broken[_-]?auth|session[_-]?fixation|credential[_-]?stuffing)', re.IGNORECASE), "CWE-287"),
+    (re.compile(r'(user[_-]?enumeration|credential[_-]?enumeration)', re.IGNORECASE), "CWE-204"),
+    (re.compile(r'(insecure[_-]?cookie|cookie[_-]?(httponly|secure|samesite))', re.IGNORECASE), "CWE-614"),
+    (re.compile(r'(mass[_-]?assignment|object[_-]?injection|parameter[_-]?binding)', re.IGNORECASE), "CWE-915"),
+    (re.compile(r'(debug[_-]?mode|stack[_-]?trace|traceback)', re.IGNORECASE), "CWE-209"),
 ]
 
 
@@ -331,17 +533,43 @@ def extract_cwe_string(raw: Any) -> Optional[str]:
             if found:
                 return found
         return None
-    
+
     text = str(raw).strip()
     if text in ("-1", "0", "null", "none"):
         return None
-        
+
     match = re.search(r'\bCWE[-_]?(\d+)\b', text, re.IGNORECASE)
     if match:
         return f"CWE-{match.group(1)}"
     if text.isdigit() and text not in ("0", "-1"):
         return f"CWE-{text}"
     return None
+
+
+def are_cwes_equivalent(cwe_a: Optional[str], cwe_b: Optional[str]) -> bool:
+    """
+    Checks if two CWE identifiers are identical, canonical equivalents,
+    or belong to the same CWE equivalence group family.
+    """
+    if not cwe_a or not cwe_b:
+        return False
+
+    norm_a = extract_cwe_string(cwe_a) or str(cwe_a).strip().upper()
+    norm_b = extract_cwe_string(cwe_b) or str(cwe_b).strip().upper()
+
+    if norm_a == norm_b:
+        return True
+
+    canon_a = CWE_VARIANT_MAP.get(norm_a, norm_a)
+    canon_b = CWE_VARIANT_MAP.get(norm_b, norm_b)
+    if canon_a == canon_b and canon_a:
+        return True
+
+    for group in CWE_EQUIVALENCE_GROUPS.values():
+        if (norm_a in group or canon_a in group) and (norm_b in group or canon_b in group):
+            return True
+
+    return False
 
 
 def normalize_cwe(
@@ -362,8 +590,8 @@ def normalize_cwe(
     # Step 1: Check ZAP pluginId if provided
     if plugin_id:
         p_str = str(plugin_id).strip()
-        if p_str in ZAP_PLUGIN_MAP:
-            canonical = ZAP_PLUGIN_MAP[p_str]
+        if p_str in ZAP_PLUGIN_TO_CWE:
+            canonical = ZAP_PLUGIN_TO_CWE[p_str]
 
     # Step 2: Check raw CWE ID
     if not canonical:
@@ -374,8 +602,8 @@ def normalize_cwe(
     # Step 3: Check rule_name as pluginId
     if not canonical and rule_name:
         r_str = str(rule_name).strip()
-        if r_str in ZAP_PLUGIN_MAP:
-            canonical = ZAP_PLUGIN_MAP[r_str]
+        if r_str in ZAP_PLUGIN_TO_CWE:
+            canonical = ZAP_PLUGIN_TO_CWE[r_str]
 
     # Step 4: Search corpus (rule_name + message + raw_cwe) for explicit CWE or keywords
     if not canonical:

@@ -186,7 +186,7 @@ async def _execute_full_scan(
     # Step 2: Run DAST Scan / Ingestion (Phase 2)
     dast_findings = []
     if request_data.raw_zap_alerts:
-        dast_findings = dast_scanner.parse_zap_alerts(request_data.raw_zap_alerts)
+        dast_findings = dast_scanner.parse_dast_report(request_data.raw_zap_alerts)
     elif request_data.target_url:
         seed_routes = [r.url_path for r in route_map] if route_map else None
         dast_res = dast_scanner.scan(DASTScanRequest(
