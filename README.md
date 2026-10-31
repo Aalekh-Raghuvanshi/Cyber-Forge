@@ -1,414 +1,429 @@
-# 🔍 LLM Code Analyser.
+# 🛡️ Cyber-Forge: SAST + DAST Correlation & Prioritization Engine
 
-AI-powered code security analysis tool that combines Large Language Models with static analysis to identify vulnerabilities, attack surfaces, and trust boundaries in source code.
+> **Next-Generation Application Security Engine:** Deterministically bridges Static Application Security Testing (SAST) and Dynamic Application Security Testing (DAST) using AST route mapping, multi-scanner deduplication, prioritized risk scoring, and zero-hallucination sandboxed LLM remediation.
 
-![LLM Code Analyser](https://img.shields.io/badge/version-1.2.0-blue.svg)
-![Python](https://img.shields.io/badge/python-3.12+-green.svg)
+![Cyber-Forge](https://img.shields.io/badge/version-2.0.0-blue.svg)
+![Python](https://img.shields.io/badge/python-3.9+-green.svg)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.109-009688.svg)
+![React](https://img.shields.io/badge/React-19-61DAFB.svg)
+![Groq](https://img.shields.io/badge/LLM-Groq%20%7C%20Ollama-orange.svg)
 ![License](https://img.shields.io/badge/license-MIT-purple.svg)
 
-## ✨ Features
+---
 
-### Core Analysis
-- **🤖 AI-Driven Analysis**: Uses Groq or local Ollama models for intelligent vulnerability detection
-- **📊 Static Analysis**: Pattern-based detection for 20+ common security issues
-- **🔄 Hybrid Intelligence**: Combines LLM insights with rule-based verification
-- **🌐 Multi-Language Support**: Python, JavaScript, Java, C/C++, PHP, Go, Rust
-- **🔒 Offline Mode**: Privacy-friendly local analysis with Ollama
-- **⚡ Fast Results**: Static analysis fallback when LLM is slow
+## 📌 Table of Contents
 
-### Advanced Features
-- **🎨 Syntax Highlighting**: Color-coded code with Prism.js
-- **📍 Line Highlighting**: Visual indicators for vulnerable lines (severity-based colors)
-- **📁 Multi-File Upload**: Analyze entire folders or ZIP archives at once
-- **📥 Export Reports**: Download analysis as JSON, Markdown, or PDF
-- **📋 Copy Fixed Code**: One-click copy for suggested code fixes
-- **💻 Modern UI**: Beautiful React interface with cybersecurity aesthetic
+- [Overview & The AppSec Problem](#-overview--the-appsec-problem)
+- [Key Features & Capabilities](#-key-features--capabilities)
+- [Core Architecture & Engine Design](#-core-architecture--engine-design)
+- [Zero-Hallucination Philosophy](#-zero-hallucination-philosophy)
+- [Supported Canonical CWEs](#-supported-canonical-cwes)
+- [Quick Start & Installation](#-quick-start--installation)
+- [Configuration Reference (`.env`)](#-configuration-reference-env)
+- [REST API Reference & Examples](#-rest-api-reference--examples)
+- [Project Structure](#-project-structure)
+- [Testing & Verification](#-testing--verification)
+- [License & Acknowledgments](#-license--acknowledgments)
 
-## 🖼️ Screenshots
+---
 
-### Dashboard
-- Clean code editor with syntax highlighting and line numbers
-- Real-time vulnerability detection
-- Risk score visualization
-- Expandable vulnerability cards with fix suggestions
-- Multi-file upload with drag-and-drop
+## ⚡ Overview & The AppSec Problem
 
-### Analysis Results
-- Attack surfaces identification
-- Trust boundary mapping
-- Severity-based categorization (Critical/High/Medium/Low)
-- One-click access to fixed code
-- Export to JSON/Markdown/PDF
+Modern AppSec teams suffer from **alert fatigue** caused by the disconnect between static and dynamic analysis:
 
-## 🚀 Quick Start
+| Challenge | Static Analysis (SAST) | Dynamic Analysis (DAST) | **Cyber-Forge Solution** |
+| :--- | :--- | :--- | :--- |
+| **Visibility** | Pinpoints exact files & line numbers | Tests live running HTTP endpoints | **Maps endpoints directly to exact code lines** |
+| **Accuracy** | High false positive rate (theoretical bugs) | Proves real-world runtime exploitability | **Correlates SAST + DAST to confirm exploitability** |
+| **Remediation** | Lacks runtime request context | Lacks source code line numbers | **Provides code diffs + runtime payload proof** |
+
+**Cyber-Forge** deterministically links SAST findings to DAST alerts via an **AST Route Mapper**. When a dynamic vulnerability on `/api/orders` matches a static vulnerability at `orders.py:88`, Cyber-Forge unifies them into a single **"Confirmed"** issue, ranks it at the top of the remediation queue, and generates a sandboxed code fix.
+
+---
+
+## ✨ Key Features & Capabilities
+
+- **Deterministic SAST Detection (FR-1)**: Scans source code directories using the **Semgrep CLI** (`semgrep scan --config=auto --json`) coupled with a deterministic AST/Regex fallback scanner in Python.
+- **DAST Integration & Ingestion (FR-2)**: Supports both **Mode A** (Live OWASP ZAP API daemon integration seeded with AST routes) and **Mode B** (DAST JSON/SARIF report ingestion + offline diagnostic header checks).
+- **One Common Finding Format (FR-3)**: Normalizes disparate scanner outputs into a unified `UnifiedFinding` Pydantic model with canonical CWE mappings (`CWE-89`, `CWE-79`, `CWE-22`, etc.) and deterministic SHA-256 fingerprint deduplication.
+- **AST Static Route Mapper (FR-4)**: Analyzes source code using Python's built-in `ast` module to map HTTP methods and URL paths directly to handler functions and exact line ranges (`start_line` to `end_line`) for FastAPI, Flask, and Express.js.
+- **3-Way Correlation Algorithm (FR-5)**: Matches findings by (1) Canonical CWE, (2) Route-to-code line boundary match, and (3) Parameter name boost.
+- **Multi-Scanner Deduplication (FR-6)**: Merges Semgrep SAST, AST Regex SAST, and ZAP DAST alerts into a single `CorrelatedIssue` with full aggregated evidence.
+- **Strict 3-State Output Labels (FR-7)**:
+  - `Confirmed`: Discovered in code and proven exploitable at runtime (linked via correlation).
+  - `Runtime only`: Observed by DAST at runtime without code correlation (e.g., missing defensive HTTP headers).
+  - `Code only`: Detected statically without runtime proof (e.g., hardcoded secrets, weak crypto).
+- **Prioritized Risk Scoring (FR-9)**: Tiered sorting (`Confirmed` > `Runtime only` > `Code only`) combined with a 0–100 risk score computed from severity weights, confirmation multipliers, and confidence boosts.
+- **Persistent SQLite Store & REST API (FR-10)**: Idempotent database storage (`data/scans.db`) with `INSERT OR REPLACE` upsert semantics and rich REST query endpoints.
+- **Sandboxed LLM Remediation**: Strict `temperature=0.0` remediation generation powered by **Groq** (`llama-3.3-70b-versatile`) or **Ollama** (`codellama`), backed by deterministic offline templates.
+
+---
+
+## 🏛️ Core Architecture & Engine Design
+
+```
+                     ┌───────────────────────────────┐
+                     │   Target Source Code Folder   │
+                     └───────┬───────────────┬───────┘
+                             │               │
+                             ▼               ▼
+                 ┌───────────────────┐ ┌───────────────┐
+                 │  AST Route Mapper │ │ SAST Scanner  │
+                 │ (FastAPI / Flask) │ │(Semgrep + AST)│
+                 └─────────┬─────────┘ └───────┬───────┘
+                           │                   │
+                           │   Route Map       │ Static Findings
+                           ▼ (Endpoints, Lines)▼ (File, Line, CWE)
+┌──────────────┐         ┌─────────────────────────────┐
+│  Target URL  │         │   Unified Findings Model    │
+│  / DAST JSON ├────────►│  & Canonical CWE Normalizer │
+└──────┬───────┘         └──────────────┬──────────────┘
+       │                                │
+       ▼                                │
+┌──────────────┐                        │
+│ DAST Scanner ├────────────────────────┘
+│ (OWASP ZAP)  │ Runtime Alerts (URL, Param, Evidence)
+└──────────────┘
+                        │
+                        ▼
+       ┌─────────────────────────────────────────────────┐
+       │         Correlation & Deduplication Engine      │
+       │                                                 │
+       │  1. Canonical CWE Match                         │
+       │  2. Route-to-Code Line Range Match              │
+       │  3. Parameter Boost Tie-Breaker                 │
+       │  4. SHA-256 Deduplication & Issue Merging       │
+       └────────────────────────┬────────────────────────┘
+                                │
+                                ▼
+       ┌─────────────────────────────────────────────────┐
+       │            Prioritization Matrix                │
+       │                                                 │
+       │  Rank 1: Confirmed    (SAST + DAST matched)     │
+       │  Rank 2: Runtime only (DAST without code match) │
+       │  Rank 3: Code only    (SAST without DAST match) │
+       │  Sort:   Risk Score descending (0 - 100)        │
+       └────────────────────────┬────────────────────────┘
+                                │
+                                ▼
+       ┌─────────────────────────────────────────────────┐
+       │   Sandboxed LLM Remediation (temperature=0.0)   │
+       │         Groq (Cloud) / Ollama (Offline)         │
+       │      + Deterministic CWE Template Fallback      │
+       └────────────────────────┬────────────────────────┘
+                                │
+                                ▼
+       ┌─────────────────────────────────────────────────┐
+       │    SQLite Persistence & REST API Endpoints      │
+       │   (/api/scans, /api/issues, /api/issues/{id})   │
+       └─────────────────────────────────────────────────┘
+```
+
+---
+
+## 🎯 Zero-Hallucination Philosophy
+
+Unlike naive LLM wrappers that guess line numbers or invent vulnerabilities:
+
+1. **Zero LLM Detection**: All vulnerabilities are detected strictly and deterministically by Semgrep rules, AST pattern matching, or live OWASP ZAP alerts.
+2. **Zero LLM Line Guessing**: Line numbers, bounds, and endpoints are derived directly from Python AST nodes (`node.lineno`, `node.end_lineno`).
+3. **Sandboxed LLM Remediation**: The LLM is invoked **only after** an issue is deterministically proven. It runs with `temperature=0.0` strictly to suggest fix instructions and code snippets.
+4. **Deterministic Fallback**: If Groq or Ollama is offline or unavailable, Cyber-Forge immediately returns built-in, industry-standard remediation templates without failing.
+
+---
+
+## 🛡️ Supported Canonical CWEs
+
+Cyber-Forge normalizes all scanner-specific rule IDs and child CWEs into canonical parent CWEs:
+
+| Canonical CWE | Vulnerability Name | SAST Detector | DAST Detector |
+| :--- | :--- | :--- | :--- |
+| **`CWE-89`** | SQL Injection | Semgrep / AST query concatenation | OWASP ZAP Active Scan / Error Injection |
+| **`CWE-79`** | Cross-Site Scripting (XSS) | Semgrep / AST unescaped template render | OWASP ZAP Reflected/Stored XSS probes |
+| **`CWE-22`** | Path Traversal / LFI | Semgrep / AST `open()` / path join | OWASP ZAP Path Traversal vectors |
+| **`CWE-78`** | OS Command Injection | Semgrep / AST `os.system` / `subprocess` | OWASP ZAP Command Injection payloads |
+| **`CWE-798`** | Hard-coded Secrets / API Keys | Semgrep / High-entropy regex detector | N/A (Code only) |
+| **`CWE-328`** | Weak Hashing / Broken Crypto | Semgrep / AST `hashlib.md5` / `sha1` | N/A (Code only) |
+| **`CWE-918`** | Server-Side Request Forgery (SSRF) | Semgrep / AST arbitrary URL requests | OWASP ZAP SSRF / Out-of-band checks |
+| **`CWE-601`** | Open Redirect | Semgrep / AST redirect parameters | OWASP ZAP Redirect probes |
+| **`CWE-693`** | Missing Defensive Security Headers | AST / Header config audit | OWASP ZAP CSP/HSTS/X-Frame-Options audit |
+
+---
+
+## 🚀 Quick Start & Installation
 
 ### Prerequisites
 
-- Python 3.12.x (required; Python 3.15 currently fails with the `semgrep` dependency chain)
-- Node.js 18+ (for frontend development)
-- Groq API key (for online mode) OR Ollama (for offline mode)
+- **Python**: 3.9, 3.10, 3.11, or 3.12
+- **Node.js**: 18+ and `npm` (for the React dashboard)
+- **Semgrep CLI**: Installed automatically via `requirements.txt`
+- **Model Backend**:
+  - **Groq API key** for lightning-fast online analysis ([free key at console.groq.com](https://console.groq.com/keys)), **OR**
+  - **Ollama** for 100% offline local analysis ([ollama.ai](https://ollama.ai))
 
-### Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/yourusername/LLM-Code-Analyzer.git
-   cd LLM-Code-Analyzer
-   ```
-
-2. **Create virtual environment**
-   ```bash
-   python3.12 -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-3. **Install Python dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Install frontend dependencies**
-   ```bash
-   cd frontend
-   npm install
-   npm run build
-   cd ..
-   ```
-
-5. **Configure environment**
-   ```bash
-   cp .env.example .env
-   # Edit .env and add your API keys
-   ```
-
-6. **Run the application**
-   
-   **Development Mode:**
-   ```bash
-   ./start_dev.sh
-   # Frontend: http://localhost:3000
-   # Backend: http://localhost:8000
-   ```
-   
-   **Production - Online Mode (Groq):**
-   ```bash
-   ./start_online.sh
-   # Access: http://localhost:8000
-   ```
-   
-   **Production - Offline Mode (Ollama):**
-   ```bash
-   ./start_offline.sh
-   # Access: http://localhost:8001
-   ```
-
-## 🔓 Access
-
-No account or sign-in is required. The landing page, analyzer, and analysis API are available directly.
-
-## 🔧 Configuration
-
-### Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `LLM_MODE` | `groq` or `ollama` | `groq` |
-| `GROQ_API_KEY` | Your Groq API key | - |
-| `GROQ_MODEL` | Groq model to use | `llama-3.3-70b-versatile` |
-| `OLLAMA_BASE_URL` | Ollama server URL | `http://localhost:11434` |
-| `OLLAMA_MODEL` | Ollama model to use | `codellama` |
-| `PORT` | Server port | `8000` |
-
-### Startup Scripts
-
-| Script | Mode | Port | Description |
-|--------|------|------|-------------|
-| `./start_dev.sh` | Development | 3000 (FE) + 8000 (BE) | Hot-reload |
-| `./start_online.sh` | Production (Groq) | 8000 | Cloud-based AI analysis |
-| `./start_offline.sh` | Production (Ollama) | 8001 | Local AI analysis |
-
-All scripts automatically kill existing processes on their ports before starting.
-
-## 📖 API Usage
-
-Analysis API endpoints are available without an account or authentication token.
-
-### Analyze Code
+### 1. Clone & Set Up Python Environment
 
 ```bash
-curl -X POST http://localhost:8000/api/analyze \
-  -H "Content-Type: application/json" \
-  -d '{
-    "code": "query = \"SELECT * FROM users WHERE id = \" + user_id",
-    "language": "python"
-  }'
+git clone https://github.com/yourusername/LLM-Code-Analyzer.git
+cd LLM-Code-Analyzer
+
+# Create virtual environment
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
 ```
 
-### Analyze Multiple Files
+### 2. Set Up Frontend
 
 ```bash
-curl -X POST http://localhost:8000/api/analyze-multiple \
+cd frontend
+npm install
+npm run build
+cd ..
+```
+
+### 3. Configure Environment Variables
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` and set your Groq API key:
+
+```env
+LLM_MODE=groq
+GROQ_API_KEY=gsk_your_groq_api_key_here
+GROQ_MODEL=llama-3.3-70b-versatile
+```
+
+### 4. Run the Engine
+
+**Development Mode (Hot-Reload Frontend + Backend):**
+```bash
+./start_dev.sh
+# Frontend: http://localhost:3000
+# Backend:  http://localhost:8000
+# Docs:     http://localhost:8000/docs
+```
+
+**Production Online Mode (Groq):**
+```bash
+./start_online.sh
+# Access: http://localhost:8000
+```
+
+**Production Offline Mode (Ollama):**
+```bash
+./start_offline.sh
+# Access: http://localhost:8001
+```
+
+---
+
+## 🔧 Configuration Reference (`.env`)
+
+| Variable | Description | Default | Allowed Values |
+| :--- | :--- | :--- | :--- |
+| `LLM_MODE` | Selected LLM backend provider | `groq` | `groq`, `ollama` |
+| `GROQ_API_KEY` | Groq API authorization key | `""` | `gsk_...` |
+| `GROQ_MODEL` | Groq chat completion model | `llama-3.3-70b-versatile` | Any Groq chat model |
+| `OLLAMA_BASE_URL` | Local Ollama daemon endpoint | `http://localhost:11434` | Any URL |
+| `OLLAMA_MODEL` | Local Ollama model name | `codellama` | e.g., `codellama`, `qwen2.5-coder` |
+| `HOST` | Server bind host address | `0.0.0.0` | IP string |
+| `PORT` | Server listen port | `8000` | Port integer |
+| `DEBUG` | Enable debug logging | `false` | `true`, `false` |
+| `ANALYSIS_TIMEOUT` | Scanner & analysis timeout (sec) | `120` | Seconds integer |
+| `RATE_LIMIT_ANALYSIS_PER_MINUTE` | Maximum analysis requests/min | `60` | Requests integer |
+
+---
+
+## 📖 REST API Reference & Examples
+
+### 1. Run Complete End-to-End Correlation (`POST /api/scans`)
+
+Initiates a combined SAST scan, DAST scan/ingestion, 3-way correlation, multi-scanner deduplication, risk scoring, and SQLite persistence.
+
+```bash
+curl -X POST http://localhost:8000/api/scans \
   -H "Content-Type: application/json" \
   -d '{
-    "files": [
-      {"filename": "main.py", "content": "import os\nos.system(cmd)", "language": "python"},
-      {"filename": "utils.py", "content": "eval(user_input)", "language": "python"}
+    "target_dir": "data",
+    "target_url": "http://localhost:5000",
+    "raw_dast_alerts": [
+      {
+        "alert": "SQL Injection",
+        "url": "http://localhost:5000/api/orders?id=1",
+        "method": "GET",
+        "param": "id",
+        "attack": "1 OR 1=1",
+        "evidence": "syntax error near SELECT",
+        "cweid": "89"
+      }
     ]
   }'
 ```
 
-### Response Example
-
+**Response (`FullScanResponse`):**
 ```json
 {
-  "success": true,
-  "language": "python",
-  "summary": "Critical SQL injection vulnerability detected",
-  "risk_score": 85,
-  "vulnerabilities": [
+  "scan_id": "c1f7a462-811c-4e78-9e63-c7ad6e6cb394",
+  "status": "completed",
+  "summary": {
+    "total_issues": 1,
+    "confirmed_count": 1,
+    "runtime_only_count": 0,
+    "code_only_count": 0,
+    "critical_count": 1,
+    "high_count": 0
+  },
+  "routes_discovered": 3,
+  "issues": [
     {
-      "type": "SQL Injection",
-      "severity": "critical",
-      "line_numbers": [1],
-      "description": "User input directly concatenated into SQL query",
-      "vulnerable_code": "query = \"SELECT * FROM users WHERE id = \" + user_id",
-      "fix_suggestion": "Use parameterized queries",
-      "fixed_code": "cursor.execute(\"SELECT * FROM users WHERE id = ?\", (user_id,))"
+      "id": "e93a7d...",
+      "status_label": "Confirmed",
+      "risk_score": 92.5,
+      "cwe_id": "CWE-89",
+      "vulnerability_type": "SQL Injection",
+      "severity": "CRITICAL",
+      "file": "data/sample_vulnerable.py",
+      "line": 88,
+      "url_path": "/api/orders",
+      "http_method": "GET",
+      "parameter": "id",
+      "payload": "1 OR 1=1",
+      "evidence": "syntax error near SELECT",
+      "code_snippet": "cursor.execute(f'SELECT * FROM orders WHERE id = {order_id}')",
+      "fix_suggestion": "Use parameterized queries or ORM abstractions instead of direct string concatenation.",
+      "fixed_code": "# Use parameterized query binding\ncursor.execute('SELECT * FROM orders WHERE id = %s', (order_id,))"
     }
-  ],
-  "attack_surfaces": [...],
-  "trust_boundaries": [...],
-  "recommendations": [...]
+  ]
 }
 ```
+
+### 2. Query Prioritized Correlated Issues (`GET /api/issues`)
+
+Retrieve deduplicated issues sorted strictly by priority rank (`Confirmed` first, then `Runtime only`, then `Code only`) and descending risk score:
+
+```bash
+# Get all issues
+curl http://localhost:8000/api/issues
+
+# Filter by status and minimum severity
+curl "http://localhost:8000/api/issues?status_label=Confirmed&severity=CRITICAL"
+```
+
+### 3. Get Single Issue Detail with Full Evidence (`GET /api/issues/{issue_id}`)
+
+```bash
+curl http://localhost:8000/api/issues/e93a7d...
+```
+
+### 4. Extract AST Route Map from Codebase (`GET /api/sast/routes`)
+
+Analyzes target directory source files and returns all registered routes:
+
+```bash
+curl "http://localhost:8000/api/sast/routes?target_dir=data"
+```
+
+**Response:**
+```json
+[
+  {
+    "http_method": "GET",
+    "url_path": "/api/orders",
+    "file": "data/sample_vulnerable.py",
+    "handler_function": "get_orders",
+    "start_line": 80,
+    "end_line": 95
+  }
+]
+```
+
+### 5. Run SAST-Only Scan (`POST /api/sast/scan`)
+
+```bash
+curl -X POST http://localhost:8000/api/sast/scan \
+  -H "Content-Type: application/json" \
+  -d '{"target_dir": "data"}'
+```
+
+---
 
 ## 🏗️ Project Structure
 
 ```
-LLM-Code-Analyzer/
+Cyber-Forge/
 ├── backend/
-│   ├── app.py                 # FastAPI application with lifespan events
-│   ├── config.py              # Configuration settings
-│   ├── routes/
-│   │   ├── analyze.py         # Analysis API endpoints
-│   ├── services/
-│   │   ├── analyzer.py        # Main analysis orchestration
-│   │   ├── llm_service.py     # LLM integration (Groq/Ollama)
-│   │   └── static_analyzer.py # Rule-based analysis (20+ patterns)
+│   ├── app.py                     # FastAPI application lifespan & routing
+│   ├── config.py                  # Pydantic Settings (Groq, Ollama, server configuration)
 │   ├── models/
-│   │   └── schemas.py         # Pydantic request/response models
+│   │   ├── __init__.py
+│   │   └── schemas.py             # UnifiedFinding, RouteEntry, CorrelatedIssue models
+│   ├── routes/
+│   │   ├── __init__.py
+│   │   └── analyze.py             # REST endpoints (/scans, /issues, /sast, /dast)
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── analyzer.py            # Legacy analysis orchestrator
+│   │   ├── correlator.py          # 3-way correlation & risk ranking engine (FR-5, FR-9)
+│   │   ├── cwe_normalizer.py      # Canonical CWE mapping dictionary (FR-3)
+│   │   ├── dast_scanner.py        # OWASP ZAP live scanner & report ingestion (FR-2)
+│   │   ├── llm_service.py         # Sandboxed Groq/Ollama remediation generator
+│   │   ├── route_mapper.py        # AST static route extractor for Python/Express (FR-4)
+│   │   ├── sast_scanner.py        # Semgrep CLI + AST Regex fallback scanner (FR-1)
+│   │   ├── static_analyzer.py     # Deterministic static rule fallback
+│   │   └── store.py               # SQLite persistence layer with idempotent upsert (FR-10)
 │   └── utils/
-│       └── prompt_engine.py   # Security analysis prompts
-├── frontend/
-│   ├── src/
-│   │   ├── pages/
-│   │   │   ├── LandingPage.jsx    # Hero, features, stats
-│   │   │   └── Dashboard.jsx      # Code editor, results, exports
-│   │   └── components/
-│   │       ├── Navbar.jsx         # Main navigation
-│   │       ├── CodeEditor.jsx     # Syntax highlighted editor
-│   │       ├── ResultsPanel.jsx   # Vulnerability display
-│   │       ├── FileUpload.jsx     # Multi-file upload
-│   │       ├── MultiFileResults.jsx # Multi-file results
-│   │       └── GlowButton.jsx     # Animated buttons
-│   ├── index.html
-│   └── vite.config.js         # Vite config with API proxy
-├── data/                      # Sample vulnerable code
-├── docs/                      # Documentation
-├── start_dev.sh               # Development mode (FE + BE with hot-reload)
-├── start_online.sh            # Production with Groq (port 8000)
-├── start_offline.sh           # Production with Ollama (port 8001)
-├── requirements.txt           # Python dependencies
-├── .gitignore                 # Git ignore rules
-└── README.md
+│       ├── __init__.py
+│       ├── logger.py              # Structured JSON logger with correlation IDs
+│       ├── prompt_engine.py       # Sandboxed remediation prompt builder
+│       └── rate_limit.py          # SlowAPI rate limiting configuration
+├── data/                          # Sample vulnerable projects & SQLite DB storage
+├── docs/                          # Architecture guides & documentation
+├── frontend/                      # React 19 + Vite + Tailwind CSS dashboard
+├── .env.example                   # Environment configuration template
+├── requirements.txt               # Python production dependencies
+├── start_dev.sh                   # Dev mode launcher (hot-reload, ports 3000 & 8000)
+├── start_online.sh                # Production Groq launcher (port 8000)
+├── start_offline.sh               # Production Ollama launcher (port 8001)
+├── test_phase1_fixes.py           # Unit tests for settings, logger, and LLM service
+├── test_sast_phase1.py            # Unit tests for FR-1, FR-3, FR-4 (SAST & AST Routes)
+├── test_dast_phase2.py            # Unit tests for FR-2, FR-3, FR-6 (DAST & Normalizer)
+└── test_correlation_phase3.py     # Unit tests for FR-5, FR-6, FR-7, FR-9, FR-10
 ```
-
-## 📊 API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/analyze` | POST | Analyze single code snippet |
-| `/api/analyze-multiple` | POST | Analyze multiple files |
-| `/api/health` | GET | Check service health |
-| `/api/config` | GET | Get current configuration |
-| `/docs` | GET | Interactive OpenAPI documentation |
-
-## 🔒 Detected Vulnerabilities
-
-| Category | Vulnerabilities |
-|----------|-----------------|
-| **Injection** | SQL Injection, Command Injection, Code Injection, XPath Injection |
-| **XSS** | Reflected XSS, Stored XSS, DOM-based XSS |
-| **Secrets** | Hardcoded Passwords, API Keys, Tokens, Connection Strings |
-| **Crypto** | Weak Hashing (MD5/SHA1), Hardcoded Encryption Keys |
-| **Code Execution** | eval(), exec(), pickle.loads(), unsafe deserialization |
-| **File Operations** | Path Traversal, Arbitrary File Read/Write |
-| **Authentication** | Weak Passwords, Missing Auth Checks |
-| **Configuration** | Debug Mode Enabled, Verbose Errors |
-
-## 🌐 Offline Mode (Ollama)
-
-For privacy-sensitive environments, run analysis completely offline:
-
-1. **Install Ollama**: https://ollama.ai
-
-2. **Pull a code-focused model:**
-   ```bash
-   ollama pull qwen2.5-coder:7b
-   # OR for better results (requires cloud):
-   ollama pull qwen3-coder:480b-cloud
-   ```
-
-3. **Start Ollama server:**
-   ```bash
-   ollama serve
-   ```
-
-4. **Run offline mode:**
-   ```bash
-   ./start_offline.sh
-   ```
-
-## 🔧 Troubleshooting
-
-### Port Already in Use
-All startup scripts automatically kill existing processes on their ports. If you still have issues:
-```bash
-# Check what's using the port
-lsof -i :8000
-
-# Kill specific process
-kill -9 <PID>
-```
-
-### PDF Export Shows Blank Page
-Make sure you have analysis results before exporting. The PDF requires actual vulnerability data to display.
-
-## 🧪 Test Code Sample
-
-Use this code to test the analyzer:
-
-```python
-import os
-import pickle
-import sqlite3
-import subprocess
-from flask import Flask, request
-
-app = Flask(__name__)
-
-# Hardcoded credentials
-API_KEY = "sk-abc123secretkey456"
-DB_PASSWORD = "admin123"
-
-def login(username, password):
-    conn = sqlite3.connect('users.db')
-    query = "SELECT * FROM users WHERE username='" + username + "' AND password='" + password + "'"
-    return conn.execute(query).fetchone()
-
-def run_command(user_input):
-    os.system("ping " + user_input)
-
-def load_data(data):
-    return pickle.loads(data)
-
-def calculate(expr):
-    return eval(expr)
-
-@app.route('/search')
-def search():
-    query = request.args.get('q', '')
-    return f"<h1>Results for: {query}</h1>"
-
-if __name__ == '__main__':
-    app.run(debug=True)
-```
-
-## 🛠️ Development
-
-### Frontend Development
-```bash
-cd frontend
-npm run dev    # Start dev server with hot reload
-npm run build  # Build for production
-npm run lint   # Run ESLint
-```
-
-### Backend Development
-```bash
-source venv/bin/activate
-python -m backend.app  # Start with auto-reload
-```
-
-## 🧹 Code Quality
-
-The project maintains high code quality standards:
-
-```bash
-# Frontend linting (0 errors)
-cd frontend && npm run lint
-
-# Python syntax check (all files pass)
-python -m py_compile backend/**/*.py
-
-# Build verification
-cd frontend && npm run build
-```
-
-**Quality Checks:**
-- ✅ ESLint: 0 errors, 0 warnings
-- ✅ Python: All files compile successfully
-- ✅ Build: Production build successful
-- ✅ No deprecation warnings
-
-## ✅ Completed Features
-
-- [x] AI-driven vulnerability detection (Groq/Ollama)
-- [x] Static analysis with 20+ patterns
-- [x] Syntax highlighting (Prism.js)
-- [x] Line highlighting for vulnerabilities (severity-based colors)
-- [x] Export reports (JSON/Markdown/PDF)
-- [x] Multi-file upload (ZIP support)
-- [x] Copy fixed code button
-- [x] Development mode with hot-reload
-- [x] Automatic port cleanup on startup
-- [x] Modern lifespan event handling (no deprecation warnings)
-
-## 🚧 Roadmap
-
-- [ ] Analysis history with database storage
-- [ ] VS Code extension
-- [ ] GitHub integration
-- [ ] CI/CD pipeline integration
-- [ ] Custom vulnerability rules
-- [ ] Team collaboration features
-- [ ] Dark/Light theme toggle
-
-## 🤝 Contributing
-
-Contributions are welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📄 License
-
-MIT License - see [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- Built with [FastAPI](https://fastapi.tiangolo.com/)
-- Frontend powered by [React](https://react.dev/) + [Vite](https://vitejs.dev/) + [Tailwind CSS](https://tailwindcss.com/)
-- AI powered by [Groq](https://groq.com/) and [Ollama](https://ollama.ai/)
-- Syntax highlighting by [Prism.js](https://prismjs.com/)
-- PDF export by [html2pdf.js](https://ekoopmans.github.io/html2pdf.js/)
-- Animations by [Framer Motion](https://www.framer.com/motion/)
 
 ---
 
-<p align="center">
-  Built for secure code everywhere
-</p>
+## 🧪 Testing & Verification
+
+Cyber-Forge includes an automated test suite verifying every functional requirement:
+
+### Run Full Pytest Suite
+
+```bash
+python3 -m pytest test_phase1_fixes.py test_sast_phase1.py test_dast_phase2.py test_correlation_phase3.py -v
+```
+
+**Results (34 / 34 Passed):**
+- `test_phase1_fixes.py`: Groq/Ollama mode verification, removed OpenAI/Gemini attributes, logger.
+- `test_sast_phase1.py`: Semgrep detection across all 6 core CWEs, AST Route Mapper (FastAPI, Flask, Express), SHA-256 deduplication fingerprints.
+- `test_dast_phase2.py`: URL path normalization, ZAP CWE/plugin normalization, Mode A live mock, Mode B diagnostics.
+- `test_correlation_phase3.py`: 3-way correlation algorithm, multi-scanner merging, strict 3-state output labels, priority ranking matrix, sandboxed remediation fallback, idempotent SQLite upserts.
+
+### Run Phase Validation Script
+
+```bash
+python3 phase1_validation.py
+```
+
+---
+
+## 📄 License & Acknowledgments
+
+- **License**: MIT License
+- **Frameworks**: [FastAPI](https://fastapi.tiangolo.com/), [React](https://react.dev/), [Vite](https://vitejs.dev/), [Tailwind CSS](https://tailwindcss.com/)
+- **Engines**: [Semgrep](https://semgrep.dev/), [OWASP ZAP](https://www.zaproxy.org/)
+- **Inference**: [Groq](https://groq.com/) (Llama-3.3-70B) & [Ollama](https://ollama.ai/) (CodeLlama)
