@@ -38,5 +38,9 @@ class Settings(BaseModel):
     analysis_requests_per_minute: int = int(os.getenv("RATE_LIMIT_ANALYSIS_PER_MINUTE", "60"))
     redis_url: Optional[str] = os.getenv("REDIS_URL", "")
 
+    # Datadog SAIST Configuration
+    datadog_saist_bin: str = os.getenv("DATADOG_SAIST_BIN", "./bin/datadog-saist")
+    enable_datadog_saist: bool = os.getenv("ENABLE_DATADOG_SAIST", "true").lower() == "true"
+
 
 settings = Settings()

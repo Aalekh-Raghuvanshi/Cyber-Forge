@@ -25,6 +25,8 @@ from backend.services.route_mapper import (
     normalize_file_path
 )
 from backend.services.static_analyzer import get_static_analyzer
+from backend.services.datadog_saist_runner import get_datadog_saist_runner
+from backend.config import settings
 from backend.utils.logger import get_logger
 
 logger = get_logger("sast_scanner")
@@ -238,7 +240,17 @@ class SASTScannerService:
         # 3. Run Static AST/Regex Fallback
         static_findings = self._run_static_fallback(abs_folder)
 
-        # 4. Deterministic Deduplication (FR-3 & FR-6 preparation)
+        # 4. Run Datadog SAIST (AI-native SAST via Groq)
+        saist_findings: List[UnifiedFinding] = []
+        if settings.enable_datadog_saist and settings.groq_api_key:
+            try:
+                saist_runner = get_datadog_saist_runner()
+                saist_findings = saist_runner.run_scan(abs_folder)
+                logger.info(f"Datadog SAIST scanner produced {len(saist_findings)} validated findings")
+            except Exception as e:
+                logger.warning(f"Datadog SAIST scanner error: {e}. Continuing with Semgrep + AST findings.")
+
+        # 5. Deterministic Deduplication & Ensemble Merger (FR-1, FR-3, FR-6)
         # Using hash of scanner_type + file + line + cwe_id
         unified_findings_map: Dict[str, UnifiedFinding] = {}
 
@@ -258,12 +270,51 @@ class SASTScannerService:
                 if not existing.description and f.description:
                     existing.description = f.description
 
-        # 5. Enrich findings with Enclosing Route (FR-4)
-        # If finding.file == route.file and route.start_line <= finding.line <= route.end_line
-        final_findings: List[UnifiedFinding] = []
-        for finding in unified_findings_map.values():
-            enriched = enrich_finding_with_route(finding, routes)
-            final_findings.append(enriched)
+        # Enrich intermediate findings with routes for function-level matching
+        intermediate_findings: List[UnifiedFinding] = [
+            enrich_finding_with_route(f, routes) for f in unified_findings_map.values()
+        ]
+        saist_enriched: List[UnifiedFinding] = [
+            enrich_finding_with_route(f, routes) for f in saist_findings
+        ]
+
+        # Smart Ensemble Merger between Semgrep/AST and Datadog SAIST
+        # When both flag the same file + cwe_id within ±2 lines or same function,
+        # merge into 1 single UnifiedFinding, set confidence="HIGH", and note both detectors.
+        for saist_f in saist_enriched:
+            matched = False
+            for base_f in intermediate_findings:
+                same_file = normalize_file_path(base_f.file or "") == normalize_file_path(saist_f.file or "")
+                same_cwe = (base_f.cwe_id or "").upper() == (saist_f.cwe_id or "").upper()
+
+                line_diff = abs((base_f.line or 0) - (saist_f.line or 0))
+                same_line_range = line_diff <= 2
+                same_function = (
+                    base_f.handler_function and saist_f.handler_function
+                    and base_f.handler_function == saist_f.handler_function
+                )
+
+                if same_file and same_cwe and (same_line_range or same_function):
+                    matched = True
+                    # Accuracy & Confidence Boost
+                    base_f.confidence = "HIGH"
+                    if SEVERITY_ORDER.get(saist_f.severity.upper(), 0) > SEVERITY_ORDER.get(base_f.severity.upper(), 0):
+                        base_f.severity = saist_f.severity
+
+                    if not base_f.code_snippet and saist_f.code_snippet:
+                        base_f.code_snippet = saist_f.code_snippet
+
+                    # Note both detectors in description
+                    desc = base_f.description or ""
+                    if "[Confirmed by Semgrep & Datadog SAIST]" not in desc:
+                        base_f.description = f"{desc} [Confirmed by Semgrep & Datadog SAIST]".strip()
+                    break
+
+            if not matched:
+                # Discovered uniquely by Datadog SAIST AI-native detection
+                intermediate_findings.append(saist_f)
+
+        final_findings: List[UnifiedFinding] = intermediate_findings
 
         # Sort findings: Highest severity first, then by file, line
         final_findings.sort(

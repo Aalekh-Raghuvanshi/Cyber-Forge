@@ -150,25 +150,59 @@ class LLMService:
 
         try:
             if self.mode == "groq":
-                response = await asyncio.to_thread(
-                    self.client.chat.completions.create,
-                    model=self.model,
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": "You are a secure code remediation assistant. Output valid JSON strictly with fix_suggestion and fixed_code."
-                        },
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.0,
-                    max_tokens=1024,
-                    response_format={"type": "json_object"}
-                )
-                parsed = self._parse_response(response.choices[0].message.content)
-                suggestion = parsed.get("fix_suggestion")
-                fixed_code = parsed.get("fixed_code")
-                if suggestion and fixed_code:
-                    return (suggestion, fixed_code)
+                parsed = None
+                if self.client:
+                    try:
+                        response = await asyncio.to_thread(
+                            self.client.chat.completions.create,
+                            model=self.model,
+                            messages=[
+                                {
+                                    "role": "system",
+                                    "content": "You are a secure code remediation assistant. Output valid JSON strictly with fix_suggestion and fixed_code."
+                                },
+                                {"role": "user", "content": prompt}
+                            ],
+                            temperature=0.0,
+                            max_tokens=1024,
+                            response_format={"type": "json_object"}
+                        )
+                        parsed = self._parse_response(response.choices[0].message.content)
+                    except Exception as client_err:
+                        logger.debug(f"Groq SDK client error, trying direct HTTP fallback: {client_err}")
+
+                # Direct HTTP Groq fallback via https://api.groq.com/openai/v1
+                if not parsed and settings.groq_api_key:
+                    async with httpx.AsyncClient(timeout=15.0) as http_client:
+                        http_res = await http_client.post(
+                            "https://api.groq.com/openai/v1/chat/completions",
+                            headers={
+                                "Authorization": f"Bearer {settings.groq_api_key}",
+                                "Content-Type": "application/json"
+                            },
+                            json={
+                                "model": self.model,
+                                "messages": [
+                                    {
+                                        "role": "system",
+                                        "content": "You are a secure code remediation assistant. Output valid JSON strictly with fix_suggestion and fixed_code."
+                                    },
+                                    {"role": "user", "content": prompt}
+                                ],
+                                "temperature": 0.0,
+                                "max_tokens": 1024,
+                                "response_format": {"type": "json_object"}
+                            }
+                        )
+                        if http_res.status_code == 200:
+                            content = http_res.json()["choices"][0]["message"]["content"]
+                            parsed = self._parse_response(content)
+
+                if parsed:
+                    suggestion = parsed.get("fix_suggestion")
+                    fixed_code = parsed.get("fixed_code")
+                    if suggestion and fixed_code:
+                        return (suggestion, fixed_code)
 
             elif self.mode == "ollama":
                 async with httpx.AsyncClient(timeout=10.0) as client:

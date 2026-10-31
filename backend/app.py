@@ -14,6 +14,7 @@ from typing import Dict, Any
 import os
 
 from backend.routes.analyze import router as analyze_router
+from backend.routes.groq_proxy import router as groq_proxy_router
 from backend.utils.rate_limit import setup_rate_limiting, limiter
 from backend.utils.logger import get_logger, set_correlation_id, get_correlation_id
 from backend.config import settings
@@ -83,6 +84,10 @@ app.add_middleware(
 # Include API routes (both /api prefix and root for FR-10 endpoints like /scans and /issues)
 app.include_router(analyze_router, prefix="/api", tags=["analysis"])
 app.include_router(analyze_router, tags=["analysis"])
+
+# Include internal Groq reverse proxy for datadog-saist adapter
+app.include_router(groq_proxy_router, tags=["groq-proxy"])
+app.include_router(groq_proxy_router, prefix="/internal/groq-proxy", tags=["groq-proxy"])
 
 # Setup rate limiting
 limiter = setup_rate_limiting(app)
