@@ -1,0 +1,47 @@
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+# hadoint is a Dockerfile linter written in Haskell
+# that helps you build best practice Docker images.
+# More details at https://github.com/hadolint/hadolint
+# testing the pipeline
+
+name: Hadolint
+
+on:
+  push:
+    branches: [master, main, v3.0.0-pre]
+    paths:
+      - "**/Dockerfile"
+  pull_request:
+    branches: [master, main, v3.0.0-pre]
+    paths:
+      - "**/Dockerfile"
+
+permissions:
+  contents: read
+
+jobs:
+  hadolint:
+    name: Lint Dockerfiles
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Lint root Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: ./Dockerfile
+
+      - name: Lint lab Dockerfiles
+        run: |
+          exit_code=0
+          for dockerfile in $(find dockerized_labs challenge/labs -name Dockerfile 2>/dev/null); do
+            echo "::group::Linting $dockerfile"
+            docker run --rm -i hadolint/hadolint < "$dockerfile" || exit_code=1
+            echo "::endgroup::"
+          done
+          exit $exit_code

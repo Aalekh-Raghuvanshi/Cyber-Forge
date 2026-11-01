@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% block title %}
+<title>Broken Authentication Lab</title>
+{% endblock %}
+
+{% block content %}
+<div class="content">
+    <div class="header-container">
+        <h3>Broken Authentication</h3>
+        <button class="notebook-btn" onclick="openModal()" title="View Secure Implementation">
+            🔗
+        </button>
+    </div>
+    {% include 'secure-fix.html' %}
+    
+    <div class="box">
+        <h4>What is Broken Authentication</h4>
+        <p class="bp">
+            Broken authentication is an umbrella term for several vulnerabilities that attackers exploit to impersonate legitimate users online. Broadly, broken authentication refers to weaknesses in two areas: session management and credential management. Both are classified as broken authentication because attackers can use either avenue to masquerade as a user: hijacked session IDs or stolen login credentials. Attackers employ a wide variety of strategies to take advantage of these weaknesses, ranging from huge credential stuffing attacks to highly targeted schemes aimed at gaining access to a specific person’s credentials.
+        </p>
+
+    </div>
+            <div style="text-align: left; margin-top: 20px;">
+                <button type="button" onclick="showLabDetails()">Lab Details</button>
+                <!-- <button type="button" onclick="window.location.href='/lab'">Access Lab</button> -->
+            </div>
+
+        <div id="labDetails" class="section" style="display: none; margin-top: 20px;">
+            <div class="lab">
+                <p class="bp">
+                    This lab demonstrates common authentication vulnerabilities. Your goal is to bypass the authentication
+                    mechanisms and gain unauthorized access to user accounts.
+                </p>
+                <p class="bp">
+                    The application has several vulnerabilities:
+                </p>
+                <ul>
+                    <li>Weak password requirements</li>
+                    <li>No brute force protection</li>
+                    <li>Insecure "Remember Me" functionality</li>
+                    <li>Vulnerable password reset mechanism</li>
+                </ul>
+                <p class="bp">
+                    <b>Hint:</b> Start by examining the password reset functionality. Look for ways to manipulate the reset token
+                    or intercept the reset process.
+                </p>
+                <div style="text-align: right; margin-top: 20px;">
+                    <button type="button" onclick="window.location.href='/lab'">Access Lab</button>
+                
+                </div>
+            </div>
+        </div>
+            
+            
+
+        <div class="box">
+            <h4>How to Prevent</h4>
+            <p>To prevent broken authentication vulnerabilities:</p>
+            <ul>
+                <li>Implement strong password policies</li>
+                <li>Use multi-factor authentication where possible</li>
+                <li>Implement proper session management</li>
+                <li>Use secure session storage</li>
+                <li>Implement account lockout after failed attempts</li>
+                <li>Use secure password recovery mechanisms</li>
+                <li>Ensure password hashing using strong algorithms (e.g., bcrypt)</li>
+                <li>Implement proper SSL/TLS configuration</li>
+            </ul>
+        </div>
+    
+</div>
+
+<script>
+function showLabDetails() {
+    const details = document.getElementById('labDetails');
+    if (details.style.display === 'none') {
+        details.style.display = 'block';
+    } else {
+        details.style.display = 'none';
+    }
+}
+
+// Modal functionality
+function openModal() {
+    document.getElementById('secureFixModal').style.display = 'block';
+    document.body.style.overflow = 'hidden'; // Prevent background scrolling
+}
+
+function closeModal() {
+    document.getElementById('secureFixModal').style.display = 'none';
+    document.body.style.overflow = 'auto'; // Re-enable background scrolling
+}
+
+// Tab functionality
+function showTab(tabName) {
+    // Hide all tab panels
+    const panels = document.querySelectorAll('.tab-panel');
+    panels.forEach(panel => panel.classList.remove('active'));
+    
+    // Remove active class from all tab buttons
+    const buttons = document.querySelectorAll('.tab-btn');
+    buttons.forEach(btn => btn.classList.remove('active'));
+    
+    // Show selected tab panel
+    document.getElementById(tabName).classList.add('active');
+    
+    // Add active class to clicked button
+    event.target.classList.add('active');
+}
+
+// Close modal when clicking overlay
+document.addEventListener('click', function(event) {
+    const modal = document.getElementById('secureFixModal');
+    const overlay = event.target.classList.contains('modal-overlay');
+    if (overlay) {
+        closeModal();
+    }
+});
+
+// Close modal with Escape key
+document.addEventListener('keydown', function(event) {
+    if (event.key === 'Escape') {
+        closeModal();
+    }
+});
+</script>
+{% endblock %} 

@@ -1,0 +1,239 @@
+# PyGoat
+<!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
+[![All Contributors](https://img.shields.io/badge/all_contributors-9-orange.svg?style=flat-square)](#contributors-)
+<!-- ALL-CONTRIBUTORS-BADGE:END -->
+
+intentionally vuln web Application Security in django.
+our roadmap build intentionally vuln web Application in django. The Vulnerability can based on OWASP top ten
+<br>
+
+Table of Contents
+=================
+
+* [pygoat](#pygoat)
+   * [Installation](#installation)
+      * [Docker Compose (recommended)](#docker-compose-recommended)
+      * [From Sources](#from-sources)
+      * [Windows Notes](#windows-notes)
+      * [Installation Video](#installation-video)
+   * [Uninstallation](#uninstallation)
+   * [Solutions](/Solutions/solution.md)
+   * [For Developers](/docs/dev_guide.md)
+
+## Installation
+
+Every lab runs in its own Docker container, so PyGoat needs
+[Docker](https://www.docker.com) in all setups.
+
+### Docker Compose (recommended)
+
+This starts PyGoat, Traefik and everything the labs need.
+
+1. Install [Docker](https://www.docker.com) with the Compose plugin. Ports `8000`, `80` (Traefik, serves the labs) and `8080` (Traefik dashboard) must be free.
+2. Clone the repository and start the stack:
+   ```bash
+   git clone https://github.com/adeyosemanputra/pygoat.git
+   cd pygoat
+   docker compose up -d
+   ```
+   (Older Docker installs use `docker-compose up -d`.)
+3. The first run builds every lab image before the web app starts, which can take 10 minutes or more. Follow the progress with `docker compose logs -f migration`. Later runs reuse the images and start quickly.
+4. Open the app at <http://lvh.me:8000> (not `localhost`). Labs are served at `lab-<username>-<lab>.lvh.me` and are only accessible to the user who started them, which requires the login cookie to be shared across `*.lvh.me`.
+5. Stop everything with `docker compose down`.
+
+> The `pygoat/pygoat` image on Docker Hub is the old v2 release and does not include the v3 labs. Use Docker Compose instead.
+
+### From Sources
+
+To setup the project on your local machine:
+<br>
+
+First, Clone the repository using GitHub website or git in Terminal
+```
+  git clone https://github.com/adeyosemanputra/pygoat.git
+  ### To Download a specific branch
+  git clone -b <branch_name> https://github.com/adeyosemanputra/pygoat.git
+```
+Then, download Traefik to your local machine in the Pygoat directory (if you are not using Docker Compose) from the Traefik [releases](https://github.com/traefik/traefik/releases) page. Open a separate terminal and run the following commands:
+
+For Linux/WSL - 
+```
+tar -zxvf traefik_<traefik_version>_linux_<arch>.tar.gz
+sudo ./traefik
+```
+
+For Windows (Powershell) - 
+```
+Expand-Archive traefik_<traefik_version>_windows_<arch>.zip
+cd traefik_<traefik_version>_windows_<arch>
+./traefik.exe
+```
+If you face any issue while installation, kindly refer to the [documentation](https://doc.traefik.io/traefik/getting-started/install-traefik/)
+#### Method 1
+
+1. Install all app and python requirements using installer file - `bash installer.sh`
+2. Apply the migrations and seed data:<br>
+   ```bash
+   python3 manage.py migrate
+   python3 manage.py seed_scoring
+   python3 manage.py populate_labs
+   ```
+3. Finally, run the development server `python3 manage.py runserver`.<br>
+4. The project will be available at <http://127.0.0.1:8000> 
+
+#### Method 2
+
+1. Install python3 requirements `pip install -r requirements.txt`.<br> 
+2. Apply the migrations and seed data:<br>
+   ```bash
+   python3 manage.py migrate
+   python3 manage.py seed_scoring
+   python3 manage.py populate_labs
+   ```
+3. Finally, run the development server `python3 manage.py runserver`.<br>
+4. The project will be available at <http://127.0.0.1:8000> 
+
+#### Method 3
+
+1. Install all app and python requirements using `setup.py` file - `pip3 install .`
+2. Apply the migrations and seed data:<br>
+   ```bash
+   python3 manage.py migrate
+   python3 manage.py seed_scoring
+   python3 manage.py populate_labs
+   ```
+3. Finally, run the development server `python3 manage.py runserver`.<br>
+4. The project will be available at <http://127.0.0.1:8000> 
+
+### Windows Notes
+
+- Use **Docker Desktop** with the **WSL2** backend. The labs are Linux containers, so they need it.
+- Docker Compose is the easiest way to run PyGoat on Windows. For a source install, running it inside **WSL2 (Ubuntu)** works better than native PowerShell.
+- On some Windows setups the `python3` command is not available. Use `python` instead, and make sure it points to Python 3.
+- Use Python **3.11**. It is the version CI tests with.
+
+### Installation video 
+
+1. From Source using `installer.sh`
+ - [Installing PyGoat from Source](https://www.youtube.com/watch?v=7bYBJXG3FRQ)
+2. Without using `installer.sh`
+ - [![](http://img.youtube.com/vi/rfzQiMeiwso/0.jpg)](http://www.youtube.com/watch?v=rfzQiMeiwso "Installation Pygoat")
+3. Install with Mac M1 (using Virtualenv)
+ - [![](http://img.youtube.com/vi/rfzQiMeiwso/0.jpg)](https://youtu.be/a5UV7mUw580 "Install with Mac M1 - using Virtualenv")
+
+## Adding new labs
+
+This section guides you through creating and integrating new vulnerability labs into PyGoat.
+
+### Step 1: Create Lab Directory Structure
+
+1. Navigate to the `dockerized_labs` folder:
+```bash
+cd dockerized_labs
+```
+
+2. Create a new directory for your lab (use descriptive naming):
+```bash
+mkdir your_lab_name
+cd your_lab_name
+```
+
+### Step 2: Create Required Files
+
+Create the standard application structure with a Dockerfile, docker-compose.yml, requirements.txt (if using Python), a main application entry point (e.g., app.py, main.py, or equivalent), vulnerable endpoints or components relevant to the lab, and a README.md documenting the lab. The application does not necessarily have to be a Flask application—it can be any Python project (preferred, since this is part of Pygoat), or even another language if appropriate. Refer to existing labs in the dockerized_labs folder for examples and structure conventions.
+
+**Important**: Add a `/health` endpoint in your app.py for container health check.
+
+### Step 3: Register Lab in the Database
+
+1. Access the Django Admin panel at `http://localhost:8000/admin/` and navigate to the **Labs** section.
+
+2. Add a new entry with:
+   - **Name**: `your_lab_name`
+   - **Build Location**: `dockerized_labs/your_lab_name`
+   - **Port**: `<PORT_NUMBER>`
+
+   *(Alternatively, you can register it via Django shell or a custom data migration).*
+
+**Important**: 
+- Check the database or Django Admin panel for all currently used ports before selecting a new one.
+- Use the same port number in `Dockerfile`, `docker-compose.yml`, `app.py`, and the database entry.
+
+
+### Step 4: Test Your Lab
+
+1. Navigate back to the project root:
+```bash
+cd /path/to/pygoat
+```
+
+2. Build and test your lab individually:
+```bash
+cd dockerized_labs/your_lab_name
+docker compose up
+```
+
+3. Access your lab at `http://localhost:<PORT_NUMBER>`
+
+4. Verify the vulnerability works as expected
+
+### Step 5: Integrate with PyGoat
+
+1. Stop the individual lab container
+
+2. Add your lab details in [base.html](introduction/templates/introduction/base.html)
+
+2. From the PyGoat root directory, rebuild the entire application:
+```bash
+docker compose down
+docker compose up --build
+```
+
+## Uninstallation
+
+### On Debian/Ubuntu Based Systems
+- On Debian/Ubuntu based systems, you can use the `uninstaller.sh` script to uninstall `pygoat` along with all it's dependencies.
+- To uninstall `pygoat`, simply run:
+```bash
+$ bash ./uninstaller.sh
+```
+
+### On Other Systems
+- On other systems, you can use the `uninstaller.py` script to uninstall `pygoat` along with all it's dependencies
+- To uninstall `pygoat`, simply run:
+```bash
+$ python3 uninstaller.py
+```
+
+## Solutions 
+<a href="/Solutions/solution.md">Solutions to all challenges</a>
+
+## Contributors ✨
+
+Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/docs/en/emoji-key)):
+
+<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
+<!-- prettier-ignore-start -->
+<!-- markdownlint-disable -->
+<table>
+  <tr>
+    <td align="center"><a href="https://github.com/pwned-17"><img src="https://avatars.githubusercontent.com/u/61360833?v=4?s=100" width="100px;" alt=""/><br /><sub><b>pwned-17</b></sub></a><br /><a href="https://github.com/adeyosemanputra/pygoat/commits?author=pwned-17" title="Code">💻</a></td>
+    <td align="center"><a href="https://github.com/prince-7"><img src="https://avatars.githubusercontent.com/u/53997924?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Aman Singh</b></sub></a><br /><a href="https://github.com/adeyosemanputra/pygoat/commits?author=prince-7" title="Code">💻</a></td>
+    <td align="center"><a href="https://github.com/adeyosemanputra"><img src="https://avatars.githubusercontent.com/u/24958168?v=4?s=100" width="100px;" alt=""/><br /><sub><b>adeyosemanputra</b></sub></a><br /><a href="https://github.com/adeyosemanputra/pygoat/commits?author=adeyosemanputra" title="Code">💻</a> <a href="https://github.com/adeyosemanputra/pygoat/commits?author=adeyosemanputra" title="Documentation">📖</a></td>
+    <td align="center"><a href="https://github.com/gaurav618618"><img src="https://avatars.githubusercontent.com/u/29380890?v=4?s=100" width="100px;" alt=""/><br /><sub><b>gaurav618618</b></sub></a><br /><a href="https://github.com/adeyosemanputra/pygoat/commits?author=gaurav618618" title="Code">💻</a> <a href="https://github.com/adeyosemanputra/pygoat/commits?author=gaurav618618" title="Documentation">📖</a></td>
+    <td align="center"><a href="https://github.com/kUSHAL0601"><img src="https://avatars.githubusercontent.com/u/29600964?v=4?s=100" width="100px;" alt=""/><br /><sub><b>MajAK</b></sub></a><br /><a href="https://github.com/adeyosemanputra/pygoat/commits?author=kUSHAL0601" title="Code">💻</a></td>
+    <td align="center"><a href="https://github.com/JustinDPerkins"><img src="https://avatars.githubusercontent.com/u/60413733?v=4?s=100" width="100px;" alt=""/><br /><sub><b>JustinPerkins</b></sub></a><br /><a href="https://github.com/adeyosemanputra/pygoat/commits?author=JustinDPerkins" title="Code">💻</a></td>
+    <td align="center"><a href="https://github.com/Hkakashi"><img src="https://avatars.githubusercontent.com/u/43193113?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Liu Peng</b></sub></a><br /><a href="https://github.com/adeyosemanputra/pygoat/commits?author=Hkakashi" title="Code">💻</a></td>
+  </tr>
+  <tr>
+    <td align="center"><a href="https://github.com/RupakBiswas-2304"><img src="https://avatars.githubusercontent.com/u/75058161?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Metaphor</b></sub></a><br /><a href="https://github.com/adeyosemanputra/pygoat/commits?author=RupakBiswas-2304" title="Code">💻</a></td>
+    <td align="center"><a href="https://whokilleddb.github.io"><img src="https://avatars.githubusercontent.com/u/56482137?v=4?s=100" width="100px;" alt=""/><br /><sub><b>whokilleddb</b></sub></a><br /><a href="https://github.com/adeyosemanputra/pygoat/commits?author=whokilleddb" title="Code">💻</a></td>
+  </tr>
+</table>
+
+<!-- markdownlint-restore -->
+<!-- prettier-ignore-end -->
+
+<!-- ALL-CONTRIBUTORS-LIST:END -->
+
+This project follows the [all-contributors](https://github.com/all-contributors/all-contributors) specification. Contributions of any kind welcome!

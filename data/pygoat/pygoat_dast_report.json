@@ -1,0 +1,58 @@
+[
+  {
+    "pluginId": "90020",
+    "cweid": "78",
+    "alert": "Remote OS Command Injection",
+    "risk": "High",
+    "confidence": "High",
+    "url": "http://localhost:5000/lab1",
+    "method": "POST",
+    "param": "domain",
+    "attack": "127.0.0.1; whoami",
+    "evidence": "root",
+    "description": "The 'domain' parameter on /lab1 allows remote command injection when passed to a system shell command without sanitization.",
+    "solution": "Avoid executing commands via shell=True; use argument vectors with subprocess.run and strict input validation."
+  },
+  {
+    "pluginId": "90021",
+    "cweid": "94",
+    "alert": "Code Injection",
+    "risk": "High",
+    "confidence": "High",
+    "url": "http://localhost:5000/lab2",
+    "method": "POST",
+    "param": "val",
+    "attack": "__import__('os').system('id')",
+    "evidence": "0",
+    "description": "The 'val' parameter on /lab2 is directly evaluated using python eval() allowing arbitrary code execution.",
+    "solution": "Avoid using eval() or exec() with untrusted user input."
+  },
+  {
+    "pluginId": "40018",
+    "cweid": "89",
+    "alert": "SQL Injection",
+    "risk": "High",
+    "confidence": "High",
+    "url": "http://localhost:5000/lab",
+    "method": "POST",
+    "param": "username",
+    "attack": "admin' OR '1'='1",
+    "evidence": "syntax error near quote",
+    "description": "SQL Injection detected on the /lab login form through the 'username' field.",
+    "solution": "Use parameterized queries or ORM queries instead of string formatting."
+  },
+  {
+    "pluginId": "10038",
+    "cweid": "693",
+    "alert": "Content Security Policy (CSP) Header Not Set",
+    "risk": "Medium",
+    "confidence": "High",
+    "url": "http://localhost:5000/",
+    "method": "GET",
+    "param": null,
+    "attack": null,
+    "evidence": "Content-Security-Policy header missing",
+    "description": "Content Security Policy (CSP) is not configured on the web application.",
+    "solution": "Configure a defensive Content-Security-Policy header."
+  }
+]
