@@ -57,11 +57,51 @@ CANONICAL_CWE_METADATA: Dict[str, Dict[str, Any]] = {
     },
     "CWE-328": {
         "cwe_id": "CWE-328",
-        "name": "Weak Hashing / Broken Cryptography",
+        "name": "Weak Hash",
         "severity": "MEDIUM",
         "confidence": "HIGH",
-        "description": "Use of Weak Hash or Broken Cryptographic Algorithm",
-        "default_remediation": "Migrate to modern cryptographic primitives such as SHA-256, SHA-3, or Argon2/bcrypt for passwords."
+        "description": "Use of Weak Hash (e.g. MD5, SHA-1)",
+        "default_remediation": "Migrate to modern cryptographic hash functions such as SHA-256, SHA-3, or Argon2/bcrypt for passwords."
+    },
+    "CWE-327": {
+        "cwe_id": "CWE-327",
+        "name": "Broken or Risky Cryptographic Algorithm",
+        "severity": "HIGH",
+        "confidence": "HIGH",
+        "description": "Use of a Broken or Risky Cryptographic Algorithm (e.g. DES, ARC4, Blowfish, ECB mode)",
+        "default_remediation": "Use approved, secure cryptographic algorithms like AES-GCM or ChaCha20-Poly1305."
+    },
+    "CWE-330": {
+        "cwe_id": "CWE-330",
+        "name": "Use of Insufficiently Random Values",
+        "severity": "MEDIUM",
+        "confidence": "HIGH",
+        "description": "Use of Insufficiently Random Values for Cryptographic or Security Contexts",
+        "default_remediation": "Use cryptographically secure pseudo-random number generators like the secrets module or os.urandom."
+    },
+    "CWE-501": {
+        "cwe_id": "CWE-501",
+        "name": "Trust Boundary Violation",
+        "severity": "MEDIUM",
+        "confidence": "HIGH",
+        "description": "Trust Boundary Violation: Untrusted data mixed into trusted session state or context.",
+        "default_remediation": "Validate and sanitize user input before storing it in HTTP session state."
+    },
+    "CWE-90": {
+        "cwe_id": "CWE-90",
+        "name": "LDAP Injection",
+        "severity": "CRITICAL",
+        "confidence": "HIGH",
+        "description": "Improper Neutralization of Special Elements used in an LDAP Query ('LDAP Injection')",
+        "default_remediation": "Use LDAP-safe escaping functions (e.g. ldap.filter.escape_filter_chars) on all user input before constructing LDAP search queries."
+    },
+    "CWE-643": {
+        "cwe_id": "CWE-643",
+        "name": "XPath Injection",
+        "severity": "HIGH",
+        "confidence": "HIGH",
+        "description": "Improper Neutralization of Data within XPath Expressions ('XPath Injection')",
+        "default_remediation": "Use parameterized XPath queries or strictly sanitize user inputs before concatenating them into XPath strings."
     },
     "CWE-918": {
         "cwe_id": "CWE-918",
@@ -225,7 +265,12 @@ CWE_EQUIVALENCE_GROUPS: Dict[str, Set[str]] = {
     "CWE-601": {"CWE-601"},
     "CWE-918": {"CWE-918"},
     "CWE-798": {"CWE-798", "CWE-259", "CWE-321"},
-    "CWE-328": {"CWE-328", "CWE-327", "CWE-329", "CWE-354", "CWE-916"},
+    "CWE-327": {"CWE-327", "CWE-326", "CWE-329"},
+    "CWE-328": {"CWE-328", "CWE-916", "CWE-354"},
+    "CWE-330": {"CWE-330", "CWE-338"},
+    "CWE-90": {"CWE-90"},
+    "CWE-643": {"CWE-643"},
+    "CWE-501": {"CWE-501"},
     "CWE-200": {"CWE-200", "CWE-209", "CWE-256", "CWE-312", "CWE-359", "CWE-522"},
     "CWE-862": {"CWE-862", "CWE-284", "CWE-285", "CWE-306"},
     "CWE-639": {"CWE-639", "CWE-862", "CWE-284"},
@@ -308,23 +353,39 @@ CWE_VARIANT_MAP: Dict[str, str] = {
     "CWE-547": "CWE-798",  # Hardcoded Security Constants
     "547": "CWE-798",
 
-    # Weak Hashing / Broken Crypto -> CWE-328
+    # Weak Hashing -> CWE-328
     "CWE-328": "CWE-328",
     "328": "CWE-328",
-    "CWE-327": "CWE-328",  # Broken or Risky Crypto Algorithm
-    "327": "CWE-328",
-    "CWE-329": "CWE-328",  # Not Using a Random IV with CBC Mode
-    "329": "CWE-328",
-    "CWE-354": "CWE-328",  # Improper Validation of Integrity Check
-    "354": "CWE-328",
-    "CWE-326": "CWE-328",  # Inadequate Encryption Strength
-    "326": "CWE-328",
     "CWE-916": "CWE-328",  # Password Hash with Insufficient Computational Effort
     "916": "CWE-328",
-    "CWE-330": "CWE-328",  # Use of Insufficiently Random Values
-    "330": "CWE-328",
-    "CWE-338": "CWE-328",  # Weak PRNG
-    "338": "CWE-328",
+    "CWE-354": "CWE-328",  # Improper Validation of Integrity Check
+    "354": "CWE-328",
+
+    # Risky / Broken Crypto Algorithm -> CWE-327
+    "CWE-327": "CWE-327",
+    "327": "CWE-327",
+    "CWE-326": "CWE-327",  # Inadequate Encryption Strength
+    "326": "CWE-327",
+    "CWE-329": "CWE-327",  # Not Using a Random IV with CBC Mode
+    "329": "CWE-327",
+
+    # Insufficiently Random Values -> CWE-330
+    "CWE-330": "CWE-330",
+    "330": "CWE-330",
+    "CWE-338": "CWE-330",  # Weak PRNG
+    "338": "CWE-330",
+
+    # LDAP Injection -> CWE-90
+    "CWE-90": "CWE-90",
+    "90": "CWE-90",
+
+    # XPath Injection -> CWE-643
+    "CWE-643": "CWE-643",
+    "643": "CWE-643",
+
+    # Trust Boundary Violation -> CWE-501
+    "CWE-501": "CWE-501",
+    "501": "CWE-501",
 
     # Insecure Deserialization -> CWE-502
     "CWE-502": "CWE-502",
@@ -531,7 +592,12 @@ KEYWORD_TO_CANONICAL_CWE: List[Tuple[re.Pattern, str]] = [
     (re.compile(r'(path[_-]?traversal|directory[_-]?traversal|local[_-]?file[_-]?inclusion|lfi|fileresponse|send_file)', re.IGNORECASE), "CWE-22"),
     (re.compile(r'(command[_-]?injection|os[_-]?command|shell[_-]?injection|os\.system|subprocess|execsync)', re.IGNORECASE), "CWE-78"),
     (re.compile(r'(hardcoded[_-]?secret|hardcoded[_-]?password|hardcoded[_-]?credential|api[_-]?key|jwt[_-]?secret|private[_-]?key)', re.IGNORECASE), "CWE-798"),
-    (re.compile(r'(weak[_-]?(crypto|hash|algorithm)|broken[_-]?crypto|md5|sha1|des[_-]?cipher|rc4)', re.IGNORECASE), "CWE-328"),
+    (re.compile(r'(broken[_-]?crypto|risky[_-]?algorithm|des[_-]?cipher|arc4|blowfish|cipher\.new|aes\.mode_ecb|tripledes)', re.IGNORECASE), "CWE-327"),
+    (re.compile(r'(weak[_-]?hash|md5|sha1|hashlib\.md5|hashlib\.sha1)', re.IGNORECASE), "CWE-328"),
+    (re.compile(r'(weak[_-]?rand|insecure[_-]?random|pseudo[_-]?random|random\.randint|random\.random|random\.choice|random\.randrange)', re.IGNORECASE), "CWE-330"),
+    (re.compile(r'(ldap[_-]?injection|ldapi|conn\.search)', re.IGNORECASE), "CWE-90"),
+    (re.compile(r'(xpath[_-]?injection|xpathi|root\.xpath|tree\.xpath)', re.IGNORECASE), "CWE-643"),
+    (re.compile(r'(trust[_-]?boundary|trustbound|session\[)', re.IGNORECASE), "CWE-501"),
     (re.compile(r'(ssrf|server[_-]?side[_-]?request[_-]?forgery)', re.IGNORECASE), "CWE-918"),
     (re.compile(r'(open[_-]?redirect|untrusted[_-]?redirect)', re.IGNORECASE), "CWE-601"),
     (re.compile(r'(content[_-]?security[_-]?policy|csp|x[_-]?frame[_-]?options|strict[_-]?transport|hsts|x[_-]?content[_-]?type|security[_-]?header|clickjacking)', re.IGNORECASE), "CWE-693"),
@@ -624,17 +690,19 @@ def normalize_cwe(
     """
     canonical = None
 
-    # Step 1: Check ZAP pluginId if provided
-    if plugin_id:
+    # Step 1: Check raw CWE ID first if provided
+    extracted = extract_cwe_string(raw_cwe)
+    if extracted:
+        if extracted in CWE_VARIANT_MAP:
+            canonical = CWE_VARIANT_MAP[extracted]
+        elif extracted in CANONICAL_CWE_METADATA:
+            canonical = extracted
+
+    # Step 2: Check ZAP pluginId if provided
+    if not canonical and plugin_id:
         p_str = str(plugin_id).strip()
         if p_str in ZAP_PLUGIN_TO_CWE:
             canonical = ZAP_PLUGIN_TO_CWE[p_str]
-
-    # Step 2: Check raw CWE ID
-    if not canonical:
-        extracted = extract_cwe_string(raw_cwe)
-        if extracted and extracted in CWE_VARIANT_MAP:
-            canonical = CWE_VARIANT_MAP[extracted]
 
     # Step 3: Check rule_name as pluginId
     if not canonical and rule_name:

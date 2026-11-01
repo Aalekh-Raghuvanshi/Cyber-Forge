@@ -106,6 +106,7 @@ services:
       GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://localhost:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-codellama}
+      ENABLE_DATADOG_SAIST: ${ENABLE_DATADOG_SAIST:-true}
       DEBUG: "false"
     volumes:
       - ./data/pygoat:/pygoat:ro

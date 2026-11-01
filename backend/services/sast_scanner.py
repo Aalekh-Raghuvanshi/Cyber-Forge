@@ -245,25 +245,47 @@ class SASTScannerService:
 
         logger.info(f"Starting SAST scan on {abs_folder}")
 
+        # Count python files to determine if this is a large batch scan
+        py_files_count = sum(
+            1 for root, _, files in os.walk(abs_folder)
+            for f in files if f.endswith(".py")
+        )
+        is_batch_scan = py_files_count > 10
+        if is_batch_scan:
+            logger.info(f"Batch scan detected ({py_files_count} Python files). Fast deterministic taint/AST scanner enabled.")
+
         # 1. Extract Route Map (FR-4)
         routes: List[RouteEntry] = extract_routes_from_folder(abs_folder)
         logger.info(f"Extracted {len(routes)} routes from {abs_folder}")
 
-        # 2. Run Semgrep CLI
-        semgrep_findings = self._run_semgrep_cli(abs_folder)
+        # 2. Run Semgrep CLI (Skip for large batch scans to avoid remote Semgrep registry latency)
+        semgrep_findings: List[UnifiedFinding] = []
+        if not is_batch_scan:
+            semgrep_findings = self._run_semgrep_cli(abs_folder)
 
-        # 3. Run Static AST/Regex Fallback
+        # 3. Run Static AST/Regex & Python Taint Engine (Deterministic offline scanner)
         static_findings = self._run_static_fallback(abs_folder)
 
-        # 4. Run Datadog SAIST (AI-native SAST via Groq)
+        # 4. Run Datadog SAIST (AI-native SAST via Groq) on all enabled Python scans.
+        # Keep large batches out of the slower Semgrep registry path above, but do not
+        # skip SAIST: it validates every eligible Python file for its supported CWEs.
         saist_findings: List[UnifiedFinding] = []
         if settings.enable_datadog_saist and settings.groq_api_key:
             try:
                 saist_runner = get_datadog_saist_runner()
+                logger.info(
+                    "Running Datadog SAIST across Python files",
+                    file_count=py_files_count,
+                    mode="binary" if saist_runner.has_binary() else "native-python",
+                )
                 saist_findings = saist_runner.run_scan(abs_folder)
                 logger.info(f"Datadog SAIST scanner produced {len(saist_findings)} validated findings")
             except Exception as e:
                 logger.warning(f"Datadog SAIST scanner error: {e}. Continuing with Semgrep + AST findings.")
+        elif settings.enable_datadog_saist:
+            logger.warning("Datadog SAIST is enabled but GROQ_API_KEY is missing; skipping AI SAST.")
+        else:
+            logger.info("Datadog SAIST is disabled by ENABLE_DATADOG_SAIST.")
 
         # 5. Deterministic Deduplication & Ensemble Merger (FR-1, FR-3, FR-6)
         # Using hash of scanner_type + file + line + cwe_id

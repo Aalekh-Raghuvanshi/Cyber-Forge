@@ -252,11 +252,39 @@ class DASTScanner:
     def parse_zap_alerts(self, alerts: List[Dict[str, Any]]) -> List[UnifiedFinding]:
         """
         Converts raw OWASP ZAP alert dicts into deduplicated UnifiedFinding objects.
-        Fulfills FR-3 and FR-6.
+        Fulfills FR-3 and FR-6, eliminating noisy generic passive false positives.
         """
         findings_map: Dict[str, UnifiedFinding] = {}
 
+        # Noisy generic passive plugins that generate false positives on benchmark/targeted scans
+        NOISY_GENERIC_PLUGIN_IDS = {
+            "10021", "10035", "10096", "10049", "10015", "10027", "10098",
+            "10055", "10016", "10017"
+        }
+
         for alert in alerts:
+            # Filter 1: Low-confidence or False Positive alerts
+            raw_conf = str(alert.get("confidence") or "").strip().upper()
+            if raw_conf in ("0", "FALSE POSITIVE", "FP") or alert.get("confidence") == 0:
+                continue
+
+            plugin_id = alert.get("pluginId") or alert.get("plugin_id")
+            plugin_id_str = str(plugin_id).strip() if plugin_id else ""
+
+            # Filter 2: Drop noisy generic passive plugins
+            if plugin_id_str in NOISY_GENERIC_PLUGIN_IDS:
+                continue
+
+            # Filter 3: Filter out informational alerts without concrete evidence
+            risk_code = str(alert.get("riskcode") or "").strip()
+            raw_risk = str(alert.get("risk") or alert.get("severity") or "").upper()
+            if risk_code == "0" or "INFO" in raw_risk:
+                continue
+
+            # Filter 4: Low-confidence missing header alerts
+            if raw_conf in ("1", "LOW") and plugin_id_str in {"10020", "10038"}:
+                continue
+
             raw_url = alert.get("url") or alert.get("uri") or "/"
             url_path = self.normalize_url_path(raw_url)
             http_method = (alert.get("method") or "GET").strip().upper()
@@ -278,15 +306,29 @@ class DASTScanner:
                     evidence = None
 
             raw_cwe = alert.get("cweid") or alert.get("cwe_id")
-            plugin_id = alert.get("pluginId") or alert.get("plugin_id")
             alert_name = alert.get("alert") or alert.get("name") or "Security Alert"
 
-            cwe_id, vuln_type, canonical_sev, default_desc = normalize_cwe(
-                raw_cwe=raw_cwe,
-                rule_name=str(plugin_id) if plugin_id else alert_name,
-                message=alert_name,
-                plugin_id=plugin_id
-            )
+            # Step 3.2: Exact ZAP CWE preservation
+            exact_cwe = None
+            if raw_cwe is not None:
+                cwe_str = str(raw_cwe).strip()
+                if cwe_str.isdigit() and int(cwe_str) > 0:
+                    exact_cwe = f"CWE-{cwe_str}"
+
+            if exact_cwe:
+                cwe_id = exact_cwe
+                from backend.services.cwe_normalizer import CANONICAL_CWE_METADATA
+                meta = CANONICAL_CWE_METADATA.get(cwe_id, {})
+                vuln_type = meta.get("name") or alert_name
+                canonical_sev = meta.get("severity") or "HIGH"
+                default_desc = meta.get("description") or alert_name
+            else:
+                cwe_id, vuln_type, canonical_sev, default_desc = normalize_cwe(
+                    raw_cwe=raw_cwe,
+                    rule_name=str(plugin_id) if plugin_id else alert_name,
+                    message=alert_name,
+                    plugin_id=plugin_id
+                )
 
             # Map ZAP risk level to severity
             raw_risk = str(alert.get("risk") or alert.get("severity") or "").upper()

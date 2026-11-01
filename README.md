@@ -1,437 +1,121 @@
-# 🛡️ Cyber-Forge: SAST + DAST Correlation & Prioritization Engine
+# Cyber-Forge
 
-> **Next-Generation AI-Native Application Security Engine:** Deterministically bridges Static Application Security Testing (SAST) and Dynamic Application Security Testing (DAST) using AST route mapping, Datadog SAIST AI-native scanning via Groq, multi-scanner deduplication, prioritized risk scoring, and zero-hallucination sandboxed remediation.
+Cyber-Forge combines Python source scanning, runtime web scanning, and route-to-code correlation. It exposes a FastAPI backend and React UI, normalizes findings into a shared format, labels issues as **Confirmed**, **Runtime only**, or **Code only**, and stores results in SQLite.
 
-![Cyber-Forge](https://img.shields.io/badge/version-2.1.0-blue.svg)
-![Python](https://img.shields.io/badge/python-3.9%20%7C%203.12-green.svg)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.109-009688.svg)
-![React](https://img.shields.io/badge/React-19-61DAFB.svg)
-![Datadog SAIST](https://img.shields.io/badge/SAIST-Datadog%20AI--Native-632CA6.svg)
-![Groq](https://img.shields.io/badge/LLM-Groq%20%7C%20Ollama-orange.svg)
-![License](https://img.shields.io/badge/license-MIT-purple.svg)
+## Run the application
 
----
+### Docker Compose (PyGoat + Cyber-Forge + ZAP)
 
-## 📌 Table of Contents
+Requirements: Docker Compose, the PyGoat checkout at `data/pygoat`, and a Groq API key for AI-assisted SAST and remediation.
 
-- [Overview & The AppSec Problem](#-overview--the-appsec-problem)
-- [How Much Has Accuracy Improved?](#-how-much-has-accuracy-improved)
-- [Key Features & Capabilities](#-key-features--capabilities)
-- [Core Architecture & Engine Design](#-core-architecture--engine-design)
-- [Datadog SAIST & The Groq Compatibility Bridge](#-datadog-saist--the-groq-compatibility-bridge)
-- [Zero-Hallucination Philosophy](#-zero-hallucination-philosophy)
-- [Supported Canonical CWEs](#-supported-canonical-cwes)
-- [Quick Start: How to Run the Project](#-quick-start-how-to-run-the-project)
-- [Configuration Reference (`.env`)](#-configuration-reference-env)
-- [REST API Reference & Examples](#-rest-api-reference--examples)
-- [Project Structure](#-project-structure)
-- [Testing & Verification (39/39 Passed)](#-testing--verification-3939-passed)
-- [License & Acknowledgments](#-license--acknowledgments)
+1. Copy `.env.example` to `.env` and set `GROQ_API_KEY`.
+2. From the repository root, run:
 
----
-
-## ⚡ Overview & The AppSec Problem
-
-Modern AppSec programs suffer from **alert fatigue** caused by the disconnect between static and dynamic analysis:
-
-| Challenge | Traditional SAST | Dynamic Analysis (DAST) | **Cyber-Forge Solution** |
-| :--- | :--- | :--- | :--- |
-| **Visibility** | Pinpoints exact files & line numbers | Tests live running HTTP endpoints | **Maps endpoints directly to exact code lines via AST** |
-| **Accuracy** | High false positive rate (40–60% noise) | High false negative rate (misses unprobed code) | **Ensemble SAST (Semgrep + Datadog SAIST) + DAST Correlation** |
-| **Verification** | Lacks runtime exploitability proof | Lacks source code line numbers | **Proves real-world runtime exploitability for confirmed bugs** |
-| **Remediation** | Generic advice without runtime context | No code line context | **Provides drop-in secure code replacements at temperature=0.0** |
-
-**Cyber-Forge** deterministically links SAST findings to DAST alerts via an **AST Route Mapper**. When a dynamic vulnerability on `/api/orders` matches a static vulnerability at `orders.py:88`, Cyber-Forge unifies them into a single **"Confirmed"** issue, ranks it at the top of the remediation queue, and generates a sandboxed code fix.
-
----
-
-## 📈 How Much Has Accuracy Improved?
-
-Integrating **Datadog SAIST (AI-Native SAST)** alongside **Semgrep** and our **AST Route-to-Code Correlation Engine** delivers a massive, measurable leap in vulnerability detection accuracy:
-
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        ACCURACY BENCHMARK COMPARISON                   │
-├──────────────────────────────┬──────────────────┬──────────────────────┤
-│ Engine Pipeline              │ False Positive % │ True Positive Rate   │
-├──────────────────────────────┼──────────────────┼──────────────────────┤
-│ Traditional Regex/AST SAST   │ 45% – 60% noise  │ ~50% (Rigid rules)   │
-│ Naive LLM-Only Scanner       │ 35% – 50% hall.  │ Unstable line counts │
-│ Semgrep CLI Alone            │ 25% – 35%        │ ~70%                 │
-│ Datadog SAIST (2-Stage AI)   │ 12% – 18%        │ ~84%                 │
-│ Cyber-Forge SAST Ensemble    │ < 8%             │ ~92% (High Conf.)    │
-│ Cyber-Forge SAST + DAST      │ < 1% (Confirmed) │ 99%+ Verified Exploits│
-└──────────────────────────────┴──────────────────┴──────────────────────┘
+```sh
+docker compose -f docker-compose.pygoat.yml up -d --build
 ```
 
-### Key Drivers of the Accuracy Leap:
+- PyGoat: <http://localhost:8000>
+- Cyber-Forge UI and API: <http://localhost:8001>
+- API documentation: <http://localhost:8001/docs>
 
-1. **60%–80% False Positive Reduction (Stage 2 Adversarial Validation):**
-   Traditional SAST flags any query containing string concatenation as SQL Injection, even when inputs are cast (`int(id)`) or checked against an allowlist. Datadog SAIST's Stage 2 Validation prompt audits taint-flow reachability and eliminates false positives before findings are reported.
-2. **Zero-Hallucination Guardrails (100% Line Number Fidelity):**
-   Unlike naive LLM wrappers that drift or invent line numbers, our engine annotates source code with 1-based physical lines and runs AST Ground-Truth verification directly against files on disk. Any finding whose line number does not exist on disk is rejected immediately.
-3. **Dual-Scanner Ensemble Confidence Boosting:**
-   When both Semgrep rules and Datadog SAIST flag the same `file` + `cwe_id` within the same function or $\pm 2$ lines, Cyber-Forge automatically merges them into a single `UnifiedFinding` and promotes detection confidence to **`HIGH`** with `[Confirmed by Semgrep & Datadog SAIST]` verification.
-4. **99%+ Certainty for "Confirmed" Issues:**
-   Correlating static code paths with dynamic OWASP ZAP runtime evidence guarantees that reported issues are both present in source code and actively exploitable over the wire.
+The Cyber-Forge container shares PyGoat's network namespace so it can reach the app and the ZAP daemon. To stop the stack, run `docker compose -f docker-compose.pygoat.yml down`.
 
----
+### Local backend development
 
-## ✨ Key Features & Capabilities
+Install Python dependencies with `python3 -m pip install -r requirements.txt`, configure `.env`, then start the backend with:
 
-- **Ensemble SAST Engine (FR-1)**:
-  - **Semgrep CLI** (`semgrep scan --config=auto --json`) for deterministic static pattern matching.
-  - **Datadog SAIST** for AI-native semantic detection and adversarial false-positive filtering.
-  - **Deterministic AST/Regex fallback** ensuring 100% offline functionality.
-- **Built-in OpenAI-to-Groq Proxy Bridge**: Enables CLI tools expecting OpenAI endpoints (like `datadog-saist`) to execute against Groq seamlessly, rewriting model names and enforcing `temperature=0.0`.
-- **DAST Integration & Ingestion (FR-2)**: Supports both **Mode A** (Live OWASP ZAP API daemon integration seeded with AST routes) and **Mode B** (DAST JSON/SARIF report ingestion + offline diagnostic header checks).
-- **One Common Finding Format (FR-3)**: Normalizes disparate scanner outputs into a unified `UnifiedFinding` Pydantic model with canonical CWE mappings (`CWE-89`, `CWE-79`, `CWE-22`, etc.) and deterministic SHA-256 fingerprint deduplication.
-- **AST Static Route Mapper (FR-4)**: Analyzes source code using Python's built-in `ast` module to map HTTP methods and URL paths directly to handler functions and exact line ranges (`start_line` to `end_line`) for FastAPI, Flask, and Express.js.
-- **3-Way Correlation Algorithm (FR-5)**: Matches findings by (1) Canonical CWE, (2) Route-to-code line boundary match, and (3) Parameter name boost.
-- **Multi-Scanner Deduplication (FR-6)**: Merges Semgrep SAST, Datadog SAIST, and ZAP DAST alerts into a single `CorrelatedIssue` with full aggregated evidence.
-- **Strict 3-State Output Labels (FR-7)**:
-  - `Confirmed`: Discovered in code and proven exploitable at runtime.
-  - `Runtime only`: Observed by DAST at runtime without code correlation (e.g., missing defensive HTTP headers).
-  - `Code only`: Detected statically without runtime proof (e.g., hardcoded secrets, weak crypto).
-- **Prioritized Risk Scoring (FR-9)**: Tiered sorting (`Confirmed` > `Runtime only` > `Code only`) combined with a 0–100 risk score computed from severity weights, confirmation multipliers, and confidence boosts.
-- **Persistent SQLite Store & REST API (FR-10)**: Idempotent database storage (`data/analyzer.db`) with `INSERT ... ON CONFLICT(issue_hash) DO UPDATE` semantics.
-- **Sandboxed LLM Remediation**: Strict `temperature=0.0` remediation generation powered by **Groq** (`llama-3.3-70b-versatile` or `openai/gpt-oss-120b`), backed by deterministic offline templates.
-
----
-
-## 🏛️ Core Architecture & Engine Design
-
-```
-                     ┌────────────────────────────────────────┐
-                     │       Target Source Code Folder        │
-                     └───────┬────────────────┬───────┬───────┘
-                             │                │       │
-                             ▼                │       ▼
-                 ┌───────────────────┐        │ ┌───────────────────────────┐
-                 │  AST Route Mapper │        │ │   Datadog SAIST (Groq)    │
-                 │ (FastAPI / Flask) │        │ │ 2-Stage AI-Native Scanner │
-                 └─────────┬─────────┘        │ └─────────────┬─────────────┘
-                           │                  │               │
-                           │                  ▼               │
-                           │         ┌─────────────────┐      │
-                           │         │   Semgrep CLI   │      │
-                           │         │ + AST Fallback  │      │
-                           │         └────────┬────────┘      │
-                           │                  │               │
-                           │   Route Map      │ SAST Findings │ SAIST SARIF
-                           ▼ (Endpoints,Lines)▼ (File, Line)  ▼ (CWE, Snippet)
-┌──────────────┐         ┌──────────────────────────────────────────────────┐
-│  Target URL  │         │            Ensemble SAST Merger                  │
-│  / DAST JSON ├────────►│     & Canonical CWE Normalizer (FR-1, FR-3)      │
-└──────┬───────┘         └────────────────────┬─────────────────────────────┘
-       │                                      │
-       ▼                                      │ All Enriched Static Findings
-┌──────────────┐                              ▼
-│ DAST Scanner ├──────────────────────────────┤
-│ (OWASP ZAP)  │ Runtime Alerts (URL, Param, Evidence)
-└──────────────┘
-                       │
-                       ▼
-      ┌─────────────────────────────────────────────────┐
-      │         Correlation & Deduplication Engine      │
-      │                                                 │
-      │  1. Canonical CWE Match                         │
-      │  2. Route-to-Code Line Range Match              │
-      │  3. Parameter Boost Tie-Breaker                 │
-      │  4. SHA-256 Deduplication & Issue Merging       │
-      └────────────────────────┬────────────────────────┘
-                               │
-                               ▼
-      ┌─────────────────────────────────────────────────┐
-      │            Prioritization Matrix                │
-      │                                                 │
-      │  Rank 1: Confirmed    (SAST + DAST matched)     │
-      │  Rank 2: Runtime only (DAST without code match) │
-      │  Rank 3: Code only    (SAST without DAST match) │
-      │  Sort:   Risk Score descending (0 - 100)        │
-      └────────────────────────┬────────────────────────┘
-                               │
-                               ▼
-      ┌─────────────────────────────────────────────────┐
-      │   Sandboxed LLM Remediation (temperature=0.0)   │
-      │         Groq (Cloud) / Ollama (Offline)         │
-      │      + Deterministic CWE Template Fallback      │
-      │      + Internal OpenAI-to-Groq Proxy            │
-      └────────────────────────┬────────────────────────┘
-                               │
-                               ▼
-      ┌─────────────────────────────────────────────────┐
-      │    SQLite Persistence & REST API Endpoints      │
-      │   (/api/scans, /api/issues, /api/issues/{id})   │
-      └─────────────────────────────────────────────────┘
+```sh
+PYTHONPATH=. python3 -m backend.app
 ```
 
----
+The local frontend is in `frontend/`; use its npm scripts for development or a production build.
 
-## 🤖 Datadog SAIST & The Groq Compatibility Bridge
+## Scan flow
 
-[Datadog SAIST](https://github.com/DataDog/datadog-saist) is an open-source AI-native SAST tool. It runs as a CLI tool and emits standard SARIF 2.1.0 reports.
+The combined endpoint is `POST /api/scans`. It accepts a source folder and/or uploaded source files, and optionally a runtime URL or previously captured ZAP alerts. For a combined scan, Cyber-Forge:
 
-### The Groq Compatibility Gap & Our Solution:
-1. **The Gap:** `datadog-saist` enforces whitelisted CLI model names (e.g. `--detection-model openai-gpt5-mini`) and strips `openai-` to send `"model": "gpt5-mini"`. Calling `api.groq.com` directly fails because Groq expects models like `llama-3.3-70b-versatile` or `openai/gpt-oss-120b`.
-2. **Built-in Reverse Proxy (`backend/routes/groq_proxy.py`):**
-   - Cyber-Forge exposes `POST /internal/groq-proxy/v1/chat/completions`.
-   - Intercepts requests, rewrites `"model"` to `settings.groq_model`, enforces `temperature=0.0`, and forwards to Groq with `GROQ_API_KEY`.
-3. **Dual Execution Engine (`backend/services/datadog_saist_runner.py`):**
-   - **Mode 1 (Binary Execution):** If `./bin/datadog-saist` (or system binary) is present, executes the CLI against our proxy:
-     ```bash
-     OPENAI_API_KEY=$GROQ_API_KEY datadog-saist \
-       --directory <dir> \
-       --output <report.sarif> \
-       --detection-model openai-gpt5-mini \
-       --validation-model openai-gpt5-mini \
-       --openai-base-url http://127.0.0.1:8000/internal/groq-proxy \
-       --local-prompts \
-       --request-timeout-sec 45
-     ```
-   - **Mode 2 (Native Python 2-Stage Engine):** If the Go binary is not compiled, executes the exact 2-stage prompt architecture natively in Python via Groq. **Works 100% out of the box without requiring Go!**
+1. Extracts an AST route map from Python, Flask/FastAPI, and supported Express route declarations.
+2. Runs SAST on the source. Small folders may use Semgrep, deterministic AST/regex and Python taint analysis run as the local rules, and enabled SAIST analyzes Python files.
+3. Runs DAST against the supplied URL through OWASP ZAP, or normalizes supplied reports. If ZAP is unavailable, the scanner can run limited passive HTTP checks.
+4. Normalizes and deduplicates findings, then correlates runtime URLs and CWEs with source routes and lines.
+5. Persists the combined issues and returns the route map and findings.
 
----
+Use `GET /api/issues` to retrieve the latest results. Other useful endpoints include `POST /api/sast/scan`, `POST /api/dast/scan`, and `GET /api/sast/routes`. See `/docs` for request schemas.
 
-## 🎯 Zero-Hallucination Philosophy
+## SAST implementation
 
-Unlike naive LLM wrappers that guess line numbers or invent vulnerabilities:
+- **Semgrep:** invoked for smaller folder scans. To keep large scans bounded, Semgrep CLI is skipped when a folder contains more than 10 Python files.
+- **Deterministic scanning:** AST/regex rules and the Python taint engine provide local findings and source locations.
+- **SAIST path:** enabled by default in the Docker Compose service. The runner scans `.py` files and focuses on CWE-89, CWE-79, CWE-22, CWE-78, CWE-798, CWE-328, CWE-918, and CWE-601. It filters to explicit supported CWE labels, valid source lines, and HIGH-confidence validation responses.
+- **Datadog distinction:** the official `datadog-saist` executable is not included in the current container. When it is absent, the runner uses the project's native two-stage SAIST-style implementation and calls the configured Groq model. This is not Datadog's hosted model or official CLI. Configure `DATADOG_SAIST_BIN` if you have installed the official executable.
 
-1. **Zero LLM Line Guessing**: Line numbers, bounds, and endpoints are derived directly from Python AST nodes (`node.lineno`, `node.end_lineno`).
-2. **AST Ground-Truth Verification**: Every finding emitted by Datadog SAIST is verified against the physical file on disk. If a line is out of bounds or points to an invalid line, it is discarded immediately.
-3. **Adversarial Validation**: Findings must survive Stage 2 validation auditing taint sources and sanitization before being accepted.
-4. **Sandboxed LLM Remediation**: Remediation generation runs strictly at `temperature=0.0` with instant deterministic fallback templates.
+The default container model is `llama-3.3-70b-versatile`; configure `GROQ_MODEL` in `.env` to select another supported Groq model. The native AI path needs a working Groq API key. Without it, deterministic SAST can still run but AI-assisted SAIST is skipped.
 
----
+## DAST implementation
 
-## 🛡️ Supported Canonical CWEs
+The DAST endpoint supports a live OWASP ZAP daemon and ingestion of ZAP, Nuclei, or SARIF reports. Live scans can seed routes extracted by SAST, then collect ZAP alerts. The scanner normalizes alert URLs, methods, parameters, payloads, evidence, severity, and CWE values. It also has limited passive HTTP checks for response headers, cookies, server banners, and debug error disclosures when a live ZAP daemon is unavailable. Passive checks do not replace an active scan.
 
-| Canonical CWE | Vulnerability Name | SAST Detectors | DAST Detector |
-| :--- | :--- | :--- | :--- |
-| **`CWE-89`** | SQL Injection | Semgrep / AST / Datadog SAIST | OWASP ZAP Active Scan / Error Injection |
-| **`CWE-79`** | Cross-Site Scripting (XSS) | Semgrep / AST / Datadog SAIST | OWASP ZAP Reflected/Stored XSS probes |
-| **`CWE-22`** | Path Traversal / LFI | Semgrep / AST / Datadog SAIST | OWASP ZAP Path Traversal vectors |
-| **`CWE-78`** | OS Command Injection | Semgrep / AST / Datadog SAIST | OWASP ZAP Command Injection payloads |
-| **`CWE-798`** | Hard-coded Secrets / API Keys | Semgrep / AST / Datadog SAIST | N/A (Code only) |
-| **`CWE-328`** | Weak Hashing / Broken Crypto | Semgrep / AST / Datadog SAIST | N/A (Code only) |
-| **`CWE-918`** | Server-Side Request Forgery (SSRF) | Semgrep / Datadog SAIST | OWASP ZAP SSRF / Out-of-band checks |
-| **`CWE-601`** | Open Redirect | Semgrep / Datadog SAIST | OWASP ZAP Redirect probes |
-| **`CWE-693`** | Missing Defensive Security Headers | AST / Header config audit | OWASP ZAP CSP/HSTS/X-Frame-Options audit |
+## Finding labels
 
----
+- **Confirmed:** a source finding is correlated with a compatible runtime finding.
+- **Runtime only:** a DAST finding has no matching source finding.
+- **Code only:** a SAST finding has no matching runtime finding.
 
-## 🚀 Quick Start: How to Run the Project
+Correlation uses canonical CWEs and route/path, line, and parameter context; matches are deduplicated and ranked. A label is evidence of the correlation logic, not a guarantee that every scanner finding is exploitable.
 
-### Prerequisites
+## OWASP BenchmarkPython results
 
-- **Python**: 3.9 or 3.12+
-- **Node.js**: 18+ and `npm`
-- **Groq API Key**: Free at [console.groq.com/keys](https://console.groq.com/keys)
+The recorded benchmark run is documented in [benchmark-results/analysis.md](benchmark-results/analysis.md). It used a deterministic, category-balanced sample of 140 cases from the 1,230-case suite (seed `20261101`) and an 11-rule, low-strength ZAP profile. The benchmark is optional and can be run with `docker-compose.benchmark.yml`; instructions are in [benchmark/README.md](benchmark/README.md).
 
----
+| Scanner / scoring | TP | FP | TN | FN | Accuracy | Precision | Recall |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Cyber-Forge SAST, exact expected CWE | 70 | 0 | 70 | 0 | 100.0% | 100.0% | 100.0% |
+| Cyber-Forge DAST, exact expected CWE | 13 | 0 | 70 | 57 | 59.3% | 100.0% | 18.6% |
+| Combined evidence, exact expected CWE | 70 | 0 | 70 | 0 | 100.0% | 100.0% | 100.0% |
 
-### Step 1: Clone & Configure Environment
+These are **sample results**, not full-suite performance. The run took 667 seconds (about 11 minutes). The broader SAST any-finding score had 5 false-positive cases; those findings did not match the expected CWE and therefore are not exact-CWE false positives in the table. The SAST benchmark was completed before the later change that enabled SAIST for large batches, so it does not measure the current SAIST-enabled batch path. Re-run the benchmark to measure that configuration. A previous 21-rule profile took about 20 minutes and recorded 17 exact-CWE raw ZAP hits and 19 normalized Cyber-Forge DAST hits, including 10 exact-CWE DAST false positives; the faster 11-rule profile found 13 exact-CWE hits with no exact-CWE false positives. The tradeoff is reduced ZAP rule coverage.
 
-```bash
-git clone https://github.com/yourusername/Cyber-Forge.git
-cd Cyber-Forge
+## Optional benchmark commands
 
-# Create & activate Python virtual environment
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+The benchmark target is a separate container; its source is mounted read-only and is not part of the normal application runtime.
 
-# Install dependencies
-pip install -r requirements.txt
-
-# Create .env from example
-cp .env.example .env
+```sh
+docker compose -f docker-compose.pygoat.yml -f docker-compose.benchmark.yml up -d --build benchmark benchmark-zap cyberforge
+docker compose -f docker-compose.pygoat.yml -f docker-compose.benchmark.yml --profile benchmark run --rm benchmark-runner --cases-per-category 10
 ```
 
-Edit `.env` and paste your Groq API key:
-```env
-LLM_MODE=groq
-GROQ_API_KEY=gsk_your_actual_groq_api_key_here
-GROQ_MODEL=llama-3.3-70b-versatile
+The harness writes reports to `benchmark-results/`. It replays and scans only the selected sample; it does not spider the whole suite.
+
+## Configuration
+
+Relevant environment variables (set in `.env`):
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `GROQ_API_KEY` | Groq API key for SAIST and LLM features | empty |
+| `GROQ_MODEL` | Model used for Groq requests | `llama-3.3-70b-versatile` in Docker Compose |
+| `LLM_MODE` | Remediation provider | `groq` |
+| `ENABLE_DATADOG_SAIST` | Enable the SAIST runner | `true` |
+| `DATADOG_SAIST_BIN` | Optional path to the official CLI executable | `./bin/datadog-saist` |
+| `OLLAMA_BASE_URL` / `OLLAMA_MODEL` | Local Ollama configuration | `http://localhost:11434` / `codellama` |
+
+## Main components
+
+```text
+backend/
+  app.py                         FastAPI application
+  routes/analyze.py              SAST, DAST, combined scan APIs
+  services/sast_scanner.py       SAST orchestration and finding merge
+  services/datadog_saist_runner.py Native SAIST-style detection and SARIF parsing
+  services/python_taint_engine.py Deterministic Python taint analysis
+  services/static_analyzer.py    Deterministic AST/regex rules
+  services/route_mapper.py       AST route extraction
+  services/dast_scanner.py       ZAP/report DAST normalization
+  services/correlator.py         Cross-scanner correlation and ranking
+  services/store.py              SQLite persistence
+frontend/                        React UI
+docker-compose.pygoat.yml        PyGoat, Cyber-Forge, and ZAP stack
+docker-compose.benchmark.yml     Optional isolated benchmark overlay
+scripts/run_owasp_benchmark.py   Benchmark runner
 ```
-
----
-
-### Step 2: Build Frontend Assets
-
-```bash
-cd frontend
-npm install
-npm run build
-cd ..
-```
-
----
-
-### Step 3: (Optional) Setup Datadog SAIST Go CLI
-
-If you have `go` installed on your machine and wish to compile the official Datadog binary:
-```bash
-./scripts/setup_datadog_saist.sh
-```
-*(If Go is not installed, skip this step! Cyber-Forge automatically uses its built-in native Python 2-Stage SAIST engine).*
-
----
-
-### Step 4: Run the Application
-
-#### Option A: One-Click Development Mode (Hot-Reload)
-```bash
-./start_dev.sh
-```
-- **Web UI:** [http://localhost:3000](http://localhost:3000)
-- **Backend API:** [http://localhost:8000](http://localhost:8000)
-- **Swagger Docs:** [http://localhost:8000/docs](http://localhost:8000/docs)
-
-#### Option B: Production Server Mode
-```bash
-source venv/bin/activate
-PYTHONPATH=. python -m backend.app
-```
-Access the application at: [http://localhost:8000](http://localhost:8000)
-
----
-
-## 🔧 Configuration Reference (`.env`)
-
-| Variable | Description | Default | Allowed Values |
-| :--- | :--- | :--- | :--- |
-| `LLM_MODE` | Selected LLM backend provider | `groq` | `groq`, `ollama` |
-| `GROQ_API_KEY` | Groq API authorization key | `""` | `gsk_...` |
-| `GROQ_MODEL` | Groq chat completion model | `llama-3.3-70b-versatile` | `llama-3.3-70b-versatile`, `openai/gpt-oss-120b`, etc. |
-| `DATADOG_SAIST_BIN` | Path to `datadog-saist` binary | `./bin/datadog-saist` | File path |
-| `ENABLE_DATADOG_SAIST` | Enable Datadog SAIST AI-native scanner | `true` | `true`, `false` |
-| `OLLAMA_BASE_URL` | Local Ollama daemon endpoint | `http://localhost:11434` | Any URL |
-| `OLLAMA_MODEL` | Local Ollama model name | `codellama` | e.g., `codellama`, `qwen2.5-coder` |
-| `HOST` | Server bind host address | `0.0.0.0` | IP string |
-| `PORT` | Server listen port | `8000` | Port integer |
-| `DEBUG` | Enable debug logging & auto-reload | `true` | `true`, `false` |
-| `ANALYSIS_TIMEOUT` | Scanner & analysis timeout (sec) | `120` | Seconds integer |
-
----
-
-## 📖 REST API Reference & Examples
-
-### 1. Run Complete End-to-End Correlation (`POST /api/scans`)
-
-```bash
-curl -X POST http://localhost:8000/api/scans \
-  -H "Content-Type: application/json" \
-  -d '{
-    "source_folder": "data/samples",
-    "target_url": "http://localhost:5000",
-    "generate_fixes": true
-  }'
-```
-
-### 2. Query Prioritized Correlated Issues (`GET /api/issues`)
-
-```bash
-# Retrieve latest scan issues (Confirmed first, then Runtime only, then Code only)
-curl http://localhost:8000/api/issues
-
-# Filter by confirmation status
-curl "http://localhost:8000/api/issues?status_label=Confirmed"
-```
-
-### 3. Clear Scan Store (`POST /api/issues/clear`)
-
-```bash
-curl -X POST http://localhost:8000/api/issues/clear
-```
-
-### 4. OpenAI-to-Groq Proxy Endpoint (`POST /internal/groq-proxy/v1/chat/completions`)
-
-```bash
-curl -X POST http://localhost:8000/internal/groq-proxy/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $GROQ_API_KEY" \
-  -d '{
-    "model": "openai-gpt5-mini",
-    "messages": [{"role": "user", "content": "Ping"}],
-    "temperature": 0.8
-  }'
-```
-
----
-
-## 🏗️ Project Structure
-
-```
-Cyber-Forge/
-├── backend/
-│   ├── app.py                         # FastAPI lifespan, routes, and SPA mounting
-│   ├── config.py                      # Pydantic Settings (Groq, Datadog SAIST, Ollama)
-│   ├── models/
-│   │   ├── __init__.py
-│   │   └── schemas.py                 # UnifiedFinding, RouteEntry, CorrelatedIssue models
-│   ├── routes/
-│   │   ├── __init__.py
-│   │   ├── analyze.py                 # Core endpoints (/api/scans, /api/issues, /api/sast)
-│   │   └── groq_proxy.py              # Reverse proxy bridge for datadog-saist CLI
-│   ├── services/
-│   │   ├── __init__.py
-│   │   ├── correlator.py              # 3-way correlation & risk ranking engine (FR-5, FR-9)
-│   │   ├── cwe_normalizer.py          # Canonical CWE normalization dictionary (FR-3)
-│   │   ├── dast_scanner.py            # OWASP ZAP live scanner & report ingestion (FR-2)
-│   │   ├── datadog_saist_runner.py    # Datadog SAIST runner & SARIF 2.1.0 parser
-│   │   ├── llm_service.py             # Sandboxed Groq/Ollama remediation generator
-│   │   ├── route_mapper.py            # AST static route extractor for Python/Express (FR-4)
-│   │   ├── sast_scanner.py            # Ensemble SAST (Semgrep + Datadog SAIST + AST)
-│   │   ├── static_analyzer.py         # Deterministic static rule fallback
-│   │   └── store.py                   # SQLite persistence layer with idempotent upsert (FR-10)
-│   └── utils/
-│       ├── __init__.py
-│       ├── logger.py                  # Structured JSON logger with correlation IDs
-│       ├── prompt_engine.py           # Sandboxed remediation prompt builder
-│       └── rate_limit.py              # SlowAPI rate limiting configuration
-├── data/                              # Sample vulnerable codebases & analyzer.db
-├── frontend/                          # Clean, minimal React 19 + Tailwind dashboard
-├── scripts/
-│   └── setup_datadog_saist.sh         # Helper script to clone & compile Go CLI
-├── test_phase1_fixes.py               # Unit tests for settings, logger, and LLM service
-├── test_sast_phase1.py                # Unit tests for FR-1, FR-3, FR-4 (SAST & AST Routes)
-├── test_dast_phase2.py                # Unit tests for FR-2, FR-3, FR-6 (DAST & Normalizer)
-├── test_correlation_phase3.py         # Unit tests for FR-5, FR-6, FR-7, FR-9, FR-10
-├── test_datadog_saist.py              # Tests for Datadog SAIST, Groq proxy, & SARIF parser
-├── requirements.txt                   # Production Python dependencies
-└── start_dev.sh                       # One-click development runner
-```
-
----
-
-## 🧪 Testing & Verification (39/39 Passed)
-
-Cyber-Forge includes an automated test suite verifying every component:
-
-```bash
-python3 -m pytest test_phase1_fixes.py test_sast_phase1.py test_dast_phase2.py test_correlation_phase3.py test_datadog_saist.py -v
-```
-
-```
-============================== 39 passed in 31.23s ==============================
-```
-
-- **`test_datadog_saist.py` (5 tests)**:
-  - `test_groq_proxy_model_remapping_and_temp`: Verifies model remapping (`openai-gpt5-mini` $\rightarrow$ Groq model) and `temperature=0.0` enforcement.
-  - `test_groq_proxy_models_endpoint`: Verifies OpenAI-compatible `/v1/models` endpoint.
-  - `test_sarif_parser_ground_truth_verification`: Confirms valid lines are extracted and hallucinated lines (e.g. line 99999) are rejected.
-  - `test_native_saist_two_stage_filtering`: Verifies Stage 1 detection + Stage 2 false positive elimination.
-  - `test_ensemble_merger_and_confidence_boost`: Verifies dual-detector merger and confidence boost to `HIGH`.
-- **`test_phase1_fixes.py` (5 tests)**: Verifies Groq/Ollama initialization, settings validation, and logging.
-- **`test_sast_phase1.py` (14 tests)**: Verifies Semgrep detection across all 6 core CWEs, AST Route Mapper (FastAPI, Flask, Express), and SHA-256 deduplication fingerprints.
-- **`test_dast_phase2.py` (7 tests)**: Verifies URL path normalization, ZAP CWE/plugin normalization, Mode A live mock, Mode B diagnostics.
-- **`test_correlation_phase3.py` (8 tests)**: Verifies 3-way correlation algorithm, multi-scanner merging, strict 3-state output labels, priority ranking matrix, sandboxed remediation fallback, and idempotent SQLite upserts.
-
----
-
-## 📄 License & Acknowledgments
-
-- **License**: MIT License
-- **Frameworks**: [FastAPI](https://fastapi.tiangolo.com/), [React](https://react.dev/), [Vite](https://vitejs.dev/), [Tailwind CSS](https://tailwindcss.com/)
-- **Scanners**: [Semgrep](https://semgrep.dev/), [Datadog SAIST](https://github.com/DataDog/datadog-saist), [OWASP ZAP](https://www.zaproxy.org/)
-- **Inference**: [Groq](https://groq.com/) (Llama-3.3-70B & GPT-OSS-120B)

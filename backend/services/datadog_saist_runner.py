@@ -51,6 +51,7 @@ TARGET_CWES = [
     ("CWE-918", "Server-Side Request Forgery (SSRF)", "HIGH"),
     ("CWE-601", "Open Redirect", "MEDIUM")
 ]
+SUPPORTED_CWE_IDS = {cwe for cwe, _, _ in TARGET_CWES}
 
 
 class DatadogSAISTRunner:
@@ -204,6 +205,26 @@ class DatadogSAISTRunner:
 
                 # Stage 1: Detection Prompt
                 candidates = self._stage1_detect(rel_path, numbered_code, ast_context)
+                # Require an explicit supported CWE and a line that exists in the
+                # source file. Do not let the generic CWE normalizer guess CWE-89.
+                eligible_candidates: List[Dict[str, Any]] = []
+                for candidate in candidates:
+                    raw_cwe = (
+                        candidate.get("cwe_id")
+                        or candidate.get("cwe")
+                        or candidate.get("canonical_cwe")
+                    )
+                    if not raw_cwe:
+                        continue
+                    cwe, _, _, _ = normalize_cwe(raw_cwe=raw_cwe)
+                    line = candidate.get("start_line") or candidate.get("line") or candidate.get("sink_line")
+                    if cwe not in SUPPORTED_CWE_IDS or not isinstance(line, int) or not 1 <= line <= len(lines):
+                        continue
+                    normalized_candidate = candidate.copy()
+                    normalized_candidate["cwe_id"] = cwe
+                    normalized_candidate["start_line"] = line
+                    eligible_candidates.append(normalized_candidate)
+                candidates = eligible_candidates
                 if not candidates:
                     continue
 
@@ -491,7 +512,11 @@ class DatadogSAISTRunner:
                             confidence = (v.get("confidence") or "MEDIUM").upper()
 
                             # Discard if invalid or confidence is LOW
-                            if is_valid and confidence in ("HIGH", "MEDIUM"):
+                            if (
+                                is_valid is True
+                                and confidence == "HIGH"
+                                and candidates[cid].get("cwe_id") in SUPPORTED_CWE_IDS
+                            ):
                                 orig = candidates[cid].copy()
                                 orig["confidence"] = confidence
                                 orig["validation_reason"] = v.get("validation_reason") or orig.get("explanation")
@@ -504,8 +529,9 @@ class DatadogSAISTRunner:
         except Exception as e:
             logger.warning(f"Stage 2 validation query failed on {filename}: {e}. Keeping validated candidates.")
 
-        # If validation call failed, keep candidates with reasonable confidence
-        return candidates
+        # Fail closed: a detection candidate is not a finding unless validation
+        # explicitly confirms it. This favors precision over recall.
+        return []
 
     # -------------------------------------------------------------------------
     # Part 3: SARIF 2.1.0 Parser with AST Ground-Truth Verification
@@ -603,6 +629,9 @@ class DatadogSAISTRunner:
                     rule_name=rule_id,
                     message=message
                 )
+                if canonical_cwe not in SUPPORTED_CWE_IDS:
+                    logger.debug(f"Discarding unsupported SAIST CWE {canonical_cwe} in {rel_file}")
+                    continue
 
                 # Surrounding context window (+/- 2 lines) for ground-truth syntax verification
                 context_window_start = max(0, start_line - 3)

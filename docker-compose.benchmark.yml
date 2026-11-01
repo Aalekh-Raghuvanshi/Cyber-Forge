@@ -1,0 +1,75 @@
+services:
+  benchmark:
+    image: cyberforge-owasp-benchmark:local
+    build:
+      context: .
+      dockerfile: Dockerfile.owasp-benchmark
+    ports:
+      - "127.0.0.1:8443:8443"
+    networks:
+      - my_network
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import ssl, urllib.request; urllib.request.urlopen('https://127.0.0.1:8443/', context=ssl._create_unverified_context(), timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  benchmark-zap:
+    image: ghcr.io/zaproxy/zaproxy:stable
+    command:
+      - zap.sh
+      - -daemon
+      - -host
+      - 0.0.0.0
+      - -port
+      - "8090"
+      - -config
+      - api.disablekey=true
+      - -config
+      - api.addrs.addr.name=.*
+      - -config
+      - api.addrs.addr.regex=true
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xms256m -Xmx1280m -XX:+UseG1GC"
+    mem_limit: 2g
+    networks:
+      - my_network
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl --silent --fail http://127.0.0.1:8090/JSON/core/view/version/ >/dev/null
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 45s
+
+  cyberforge:
+    volumes:
+      - ./data/benchmarkpython:/benchmark-python:ro
+
+  benchmark-runner:
+    image: pygoat-cyberforge
+    profiles: [benchmark]
+    network_mode: service:web
+    depends_on:
+      benchmark:
+        condition: service_healthy
+      benchmark-zap:
+        condition: service_healthy
+      cyberforge:
+        condition: service_started
+    volumes:
+      - ./scripts/run_owasp_benchmark.py:/benchmark-harness/run_owasp_benchmark.py:ro
+      - ./data/benchmarkpython:/benchmark-python:ro
+      - ./benchmark-results:/benchmark-results
+    command:
+      - python
+      - /benchmark-harness/run_owasp_benchmark.py
+      - --zap-api
+      - http://benchmark-zap:8090
+

@@ -34,3 +34,6 @@ __pycache__
 # Virtual Environment
 venv
 venv312
+
+# OWASP Benchmark scan artifacts
+benchmark-results/

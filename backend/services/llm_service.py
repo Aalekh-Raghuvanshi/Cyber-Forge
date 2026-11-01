@@ -99,6 +99,26 @@ DETERMINISTIC_REMEDIATIONS: Dict[str, Dict[str, str]] = {
         "fix_suggestion": "Verify user authentication using secure server-side session stores instead of unverified headers or cookies.",
         "fixed_code": "if not authenticate_session(request.session):\n    return redirect('/login')"
     },
+    "CWE-90": {
+        "fix_suggestion": "Sanitize and escape user input using ldap3.utils.conv.escape_filter_chars or ldap.filter.escape_filter_chars before interpolating into LDAP queries.",
+        "fixed_code": "import ldap3.utils.conv\nsafe_val = ldap3.utils.conv.escape_filter_chars(user_input)\nfilter_str = f'(&(objectclass=person)(uid={safe_val}))'"
+    },
+    "CWE-327": {
+        "fix_suggestion": "Replace broken or legacy cryptographic algorithms (DES, Blowfish, RC4) with strong, modern ciphers like AES-GCM or ChaCha20-Poly1305 via the cryptography library.",
+        "fixed_code": "from cryptography.hazmat.primitives.ciphers.aead import AESGCM\naesgcm = AESGCM(key)\nencrypted_data = aesgcm.encrypt(nonce, data, None)"
+    },
+    "CWE-330": {
+        "fix_suggestion": "Use the cryptographically secure standard library module `secrets` (or `random.SystemRandom()`) instead of standard pseudo-random functions like `random.random()` or `random.randint()` for security-sensitive tokens, cookies, or salts.",
+        "fixed_code": "import secrets\nsecure_token = secrets.token_urlsafe(32)"
+    },
+    "CWE-501": {
+        "fix_suggestion": "Validate, sanitize, and verify user authorization before saving client-supplied keys or data directly into server-side session stores.",
+        "fixed_code": "if user_input in ALLOWED_SESSION_KEYS:\n    session[user_input] = validated_value"
+    },
+    "CWE-643": {
+        "fix_suggestion": "Use parameterized XPath variables or escape special XPath characters (e.g., replace single quotes with '&apos;') rather than string concatenating user input into XPath expressions.",
+        "fixed_code": "nodes = root.xpath('/Employees/Employee[@emplid=$id]', id=user_id)"
+    },
     "CWE-614": {
         "fix_suggestion": "Ensure all sensitive and authentication cookies include Secure, HttpOnly, and SameSite attributes.",
         "fixed_code": "response.set_cookie('session_id', token, secure=True, httponly=True, samesite='Lax')"
