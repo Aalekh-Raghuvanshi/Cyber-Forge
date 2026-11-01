@@ -415,24 +415,24 @@ const Dashboard = () => {
         </div>
       )}
 
-      {/* DAST Target Offline Notice */}
+      {/* No DAST findings notice */}
       {scanData && scanData.confirmed_count === 0 && scanData.runtime_only_count === 0 && targetUrl && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6 text-xs text-amber-900 flex items-start gap-3">
           <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
           <div className="space-y-1">
             <p className="font-semibold text-amber-950">
-              DAST Runtime Server Offline ({targetUrl})
+              No DAST findings returned ({targetUrl})
             </p>
             <p className="text-amber-800 leading-relaxed">
-              SAST successfully extracted <strong>{scanData.code_only_count} static code vulnerabilities</strong> across <strong>{scanData.route_map?.length || 0} AST routes</strong>.
-              However, the live DAST URL <code className="bg-amber-100/80 px-1 py-0.5 rounded font-mono text-[11px] text-amber-900">{targetUrl}</code> was unreachable (no active server listening).
+              SAST found <strong>{scanData.code_only_count} code-only findings</strong> across <strong>{scanData.route_map?.length || 0} AST routes</strong>. The DAST scan returned no runtime alerts for this run.
+              This does not necessarily mean the target is offline; ZAP may have reached it without finding an alert on the scanned pages.
             </p>
             <p className="text-amber-800 leading-relaxed">
-              Cyber-Forge strictly enforces a <strong>Zero-Mock Policy</strong> (it will never invent fake runtime alerts for unreachable servers). To view confirmed correlations:
+              Cyber-Forge reports runtime findings only when a scanner or supplied report provides evidence. To check the correlation flow, you can:
             </p>
             <ul className="list-disc list-inside text-amber-800 pl-1 space-y-0.5 text-[11px]">
-              <li>Check the <strong>&quot;Include demo OWASP ZAP alerts for correlation&quot;</strong> box above to simulate active runtime alerts for {targetDir.toLowerCase().includes('pygoat') ? 'PyGoat' : 'your target'}, or</li>
-              <li>Launch the target web application locally (e.g. PyGoat) and point the URL to its active port.</li>
+              <li>Confirm the target URL and the routes reached by the scan.</li>
+              <li>Enable <strong>&quot;Include demo OWASP ZAP alerts for correlation&quot;</strong> to exercise the correlation flow with demo evidence.</li>
             </ul>
           </div>
         </div>
