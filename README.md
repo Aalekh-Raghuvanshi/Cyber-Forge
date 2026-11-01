@@ -4,6 +4,41 @@ Cyber-Forge is a web application for static analysis (SAST), dynamic analysis (D
 
 The normal Docker deployment starts Cyber-Forge alongside PyGoat and ZAP. An optional Docker Compose overlay runs OWASP BenchmarkPython for scanner evaluation.
 
+## Architecture
+
+```mermaid
+flowchart LR
+    User[Analyst] --> UI[React UI]
+    UI --> API[FastAPI API]
+
+    API --> Routes[AST route mapper]
+    API --> SAST[SAST scan]
+    API --> DAST[DAST scan]
+    Routes --> SAST
+
+    SAST --> Semgrep[Semgrep for small scans]
+    SAST --> Static[AST rules and Python taint analysis]
+    SAST --> SAIST[SAIST-style Python analysis]
+    SAIST --> Groq[Groq model API]
+
+    DAST --> ZAP[OWASP ZAP]
+    DAST --> Reports[ZAP / Nuclei / SARIF reports]
+
+    Semgrep --> Normalize[Normalize and deduplicate]
+    Static --> Normalize
+    SAIST --> Normalize
+    ZAP --> Normalize
+    Reports --> Normalize
+    Normalize --> Correlate[Correlate CWE, routes, and source locations]
+    Correlate --> Results[Confirmed / Runtime only / Code only]
+    Results --> Store[(SQLite)]
+    Results --> UI
+
+    PyGoat[PyGoat target] --> DAST
+```
+
+In the Docker setup, the scanners and PyGoat run as separate services, with Cyber-Forge configured to reach the target and ZAP. The benchmark target and its dedicated ZAP service are added through the optional benchmark Compose file.
+
 ## Run with Docker
 
 ### Requirements
