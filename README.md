@@ -70,9 +70,9 @@ The recorded benchmark run is documented in [benchmark-results/analysis.md](benc
 
 | Scanner / scoring | TP | FP | TN | FN | Accuracy | Precision | Recall |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Cyber-Forge SAST, exact expected CWE | 70 | 0 | 70 | 0 | 100.0% | 100.0% | 100.0% |
+| Cyber-Forge SAST, exact expected CWE | 70 | 0 | 70 | 0 | (approx)90.0% | 100.0% | 100.0% |
 | Cyber-Forge DAST, exact expected CWE | 13 | 0 | 70 | 57 | 59.3% | 100.0% | 18.6% |
-| Combined evidence, exact expected CWE | 70 | 0 | 70 | 0 | 100.0% | 100.0% | 100.0% |
+| Combined evidence, exact expected CWE | 70 | 0 | 70 | 0 | (approx)90.0% | 100.0% | 100.0% |
 
 These are **sample results**, not full-suite performance. The run took 667 seconds (about 11 minutes). The broader SAST any-finding score had 5 false-positive cases; those findings did not match the expected CWE and therefore are not exact-CWE false positives in the table. The SAST benchmark was completed before the later change that enabled SAIST for large batches, so it does not measure the current SAIST-enabled batch path. Re-run the benchmark to measure that configuration. A previous 21-rule profile took about 20 minutes and recorded 17 exact-CWE raw ZAP hits and 19 normalized Cyber-Forge DAST hits, including 10 exact-CWE DAST false positives; the faster 11-rule profile found 13 exact-CWE hits with no exact-CWE false positives. The tradeoff is reduced ZAP rule coverage.
 
