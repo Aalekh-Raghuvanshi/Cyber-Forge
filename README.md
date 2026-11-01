@@ -50,7 +50,7 @@ Use `GET /api/issues` to retrieve the latest results. Other useful endpoints inc
 - **SAIST path:** enabled by default in the Docker Compose service. The runner scans `.py` files and focuses on CWE-89, CWE-79, CWE-22, CWE-78, CWE-798, CWE-328, CWE-918, and CWE-601. It filters to explicit supported CWE labels, valid source lines, and HIGH-confidence validation responses.
 - **Datadog distinction:** the official `datadog-saist` executable is not included in the current container. When it is absent, the runner uses the project's native two-stage SAIST-style implementation and calls the configured Groq model. This is not Datadog's hosted model or official CLI. Configure `DATADOG_SAIST_BIN` if you have installed the official executable.
 
-The default container model is `llama-3.3-70b-versatile`; configure `GROQ_MODEL` in `.env` to select another supported Groq model. The native AI path needs a working Groq API key. Without it, deterministic SAST can still run but AI-assisted SAIST is skipped.
+The default container model is `openai/gpt-oss-120b`; configure `GROQ_MODEL` in `.env` to select another supported Groq model. The native AI path needs a working Groq API key. Without it, deterministic SAST can still run but AI-assisted SAIST is skipped.
 
 ## DAST implementation
 
